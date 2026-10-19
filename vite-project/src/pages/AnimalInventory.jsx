@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { PageIntro } from './Dashboard.jsx';
 import Modal, { ModalActions, Field } from '../components/Modal.jsx';
-import { TableScroll, Th, Td, IconButton } from '../components/Table.jsx';
+import { TableScroll, Td, IconButton } from '../components/Table.jsx';
 import { formatNumber, formatMoney } from '../data/mockData.js';
 import { api } from '../services/api.js';
 import ProjectDropdown from '../components/ProjectDropdown.jsx';
@@ -82,39 +82,45 @@ export function getErrorMessage(err, fallback = 'An unexpected error occurred.')
 
 // Table Component
 export function InventoryTable({ items, isLoading, onEdit, onView, onAddStock, onRefresh }) {
+  const isEmpty = items.length === 0;
+  const headerClassName = `${isEmpty ? 'whitespace-normal' : 'whitespace-nowrap'} pb-3 pr-5 text-[10px] font-bold uppercase tracking-[.13em] text-[#8a948e] dark:text-[#789d8e]`;
+
   return (
     <TableScroll>
-      <table className="w-full text-left text-sm">
+      <table
+        className="w-full text-left text-sm"
+        style={isEmpty ? { minWidth: 0, tableLayout: 'fixed' } : undefined}
+      >
         <thead>
           <tr>
-            <Th>Animal Type</Th>
-            <Th>Batch Year</Th>
-            <Th>Total Animals</Th>
-            <Th>Total Hissa</Th>
-            <Th>Booked Hissa</Th>
-            <Th>Available Hissa</Th>
-            <Th>Total Price</Th>
-            <Th>Actions</Th>
+            <th className={headerClassName}>Animal Type</th>
+            <th className={headerClassName}>Batch Year</th>
+            <th className={headerClassName}>Total Animals</th>
+            <th className={headerClassName}>Total Hissa</th>
+            <th className={headerClassName}>Booked Hissa</th>
+            <th className={headerClassName}>Available Hissa</th>
+            <th className={headerClassName}>Total Price</th>
+            <th className={headerClassName}>Actions</th>
           </tr>
         </thead>
         <tbody>
           {isLoading ? (
             <tr>
-              <Td colSpan={8} className="py-10 text-center text-[#78847c] dark:text-[#92b1a3]">
+              <td colSpan={8} className="whitespace-normal py-10 pr-5 text-center text-[#78847c] dark:text-[#92b1a3]">
                 <div className="flex items-center justify-center gap-2">
                   <RefreshCw size={16} className="animate-spin text-[#246b59] dark:text-[#4ade80]" />
                   <span>Loading animal batches from server...</span>
                 </div>
-              </Td>
+              </td>
             </tr>
           ) : items.length === 0 ? (
             <tr>
-              <Td colSpan={8} className="py-10 text-center text-[#78847c] dark:text-[#92b1a3]">
+              <td colSpan={8} className="whitespace-normal py-10 pr-5 text-center text-[#78847c] dark:text-[#92b1a3]">
                 <div className="space-y-2">
                   <p className="font-semibold text-[#315246] dark:text-[#e0eee6]">No active batches match your filter</p>
                   <p className="text-xs">Create a new batch or reset your search & dropdown filters.</p>
                 </div>
-              </Td>
+              </td>
             </tr>
           ) : (
             items.map((item) => {
