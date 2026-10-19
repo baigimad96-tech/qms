@@ -19,7 +19,7 @@ const ENV = {
   },
 };
 
-const getEnvVars = (env = 'dev') => {
+const getEnvVars = (env = 'prod') => {
   if (!ENV[env]) {
     throw new Error(`Unknown environment: ${env}`);
   }
