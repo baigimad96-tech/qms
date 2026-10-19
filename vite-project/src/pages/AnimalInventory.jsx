@@ -379,11 +379,7 @@ export function InventoryModal({
             />
             <datalist id="animal-type-datalist">
               <option value="Buffalo" />
-              <option value="Mini Buffalo" />
-              <option value="Camel" />
-              <option value="Goat" />
-              <option value="Sheep" />
-              <option value="Cow" />
+
             </datalist>
           </Field>
           <Field label="Batch Year">
