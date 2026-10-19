@@ -115,7 +115,7 @@ export function BookingsTable({
       <table className="w-full text-left text-sm">
         <thead>
           <tr>
-            <Th>Booking ID</Th>
+            <Th>Receipt No</Th>
             <Th>Qurbani Person</Th>
             <Th>Animal</Th>
             <Th>Qurbani Day</Th>
@@ -149,7 +149,7 @@ export function BookingsTable({
               >
                 <Td>
                   <span className="font-mono text-xs font-bold text-[#246b59] dark:text-[#52c99a]">
-                    {displayId}
+                    {b.receiptNumber || '—'}
                   </span>
                 </Td>
                 <Td>
@@ -318,10 +318,25 @@ export default function Dashboard({ data, navigate, notify }) {
       if (results[5].status === 'fulfilled' && results[5].value?.data) {
         const raw = results[5].value.data;
         if (Array.isArray(raw) && raw.length > 0) {
+          const baselineData =
+            results[8].status === 'fulfilled'
+              ? results[8].value?.data?.data || results[8].value?.data
+              : null;
+          const baselineBookings = Array.isArray(baselineData)
+            ? baselineData
+            : Array.isArray(baselineData?.content)
+            ? baselineData.content
+            : [];
           const normalizedRecent = raw.map((b) => ({
             ...b,
             id: b.receiptNumber || String(b.hissaBookingId || b.id),
-            receiptNumber: b.receiptNumber || String(b.hissaBookingId || b.id),
+            receiptNumber:
+              b.receiptNumber ||
+              baselineBookings.find(
+                (booking) =>
+                  String(booking.hissaBookingId || booking.id) ===
+                  String(b.hissaBookingId || b.bookingId || b.id)
+              )?.receiptNumber,
             bookingId: b.hissaBookingId || b.id,
             hissaBookingId: b.hissaBookingId || b.id,
             personName: b.qurbaniPersonName || b.personName || 'Anonymous',
@@ -380,7 +395,7 @@ export default function Dashboard({ data, navigate, notify }) {
           const normalized = rawBk.map((b) => ({
             ...b,
             id: b.receiptNumber || String(b.hissaBookingId || b.id),
-            receiptNumber: b.receiptNumber || String(b.hissaBookingId || b.id),
+            receiptNumber: b.receiptNumber,
             bookingId: b.hissaBookingId || b.id,
             hissaBookingId: b.hissaBookingId || b.id,
             personName: b.qurbaniPersonName || b.personName || 'Anonymous',

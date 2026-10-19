@@ -10,7 +10,6 @@ import {
   ReceiptIndianRupee,
   LogOut,
   RefreshCw,
-  Sparkles,
   ArrowRight,
 } from 'lucide-react';
 import JihLogo from './JihLogo.jsx';
@@ -98,15 +97,6 @@ export default function Sidebar({ path, mobileNav, setMobileNav, navigate, logou
             );
           })}
         </nav>
-        <div className="mx-5 mb-5 rounded-2xl border border-[#376355] bg-[#21483d] p-4">
-          <div className="mb-2 flex items-center gap-2 text-[#e7b85f]">
-            <Sparkles size={15} />
-            <span className="text-xs font-bold">Season pulse</span>
-          </div>
-          <p className="text-xs leading-5 text-[#bad0c5]">
-            Capacity is healthy across all three Qurbani days.
-          </p>
-        </div>
         <div className="border-t border-[#31584d] p-4">
           <button
             data-testid="button-logout"

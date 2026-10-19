@@ -519,8 +519,7 @@ export default function AuditLogs({ data }) {
         queryParams.action = actionVal;
       }
       if (adminFilter !== 'All') {
-        const adminMatch = adminFilter.match(/\d+/);
-        if (adminMatch) queryParams.adminId = Number(adminMatch[0]);
+        queryParams.adminId = Number(adminFilter);
       }
 
       const res = await getAuditLogs(queryParams);
@@ -577,8 +576,7 @@ export default function AuditLogs({ data }) {
 
   // Compute available actions dynamically from returned logs + standard presets
   const actionOptions = useMemo(() => {
-    const set = new Set([
-      'All',
+    const actions = new Set([
       'ANIMAL_STOCK_ADDED',
       'ANIMAL_CREATED',
       'ANIMAL_UPDATED',
@@ -592,10 +590,28 @@ export default function AuditLogs({ data }) {
       'QURBANI_DAY_CAPACITY_UPDATED',
     ]);
     auditLogs.forEach((item) => {
-      if (item.action) set.add(item.action);
+      if (item.action) actions.add(item.action);
     });
-    return Array.from(set);
-  }, [auditLogs]);
+
+    const matchesEntity = (action) => {
+      switch (entityFilter) {
+        case 'ANIMAL':
+          return action.startsWith('ANIMAL_');
+        case 'HISSA_BOOKING':
+          return action.startsWith('HISSA_BOOKING_') || action.startsWith('BOOKING_');
+        case 'USER':
+          return action.startsWith('ADMIN_') || action.startsWith('USER_');
+        case 'QURBANI_DAY':
+          return action.startsWith('QURBANI_DAY_');
+        case 'EXPENSE':
+          return action.startsWith('EXPENSE_');
+        default:
+          return true;
+      }
+    };
+
+    return ['All', ...Array.from(actions).filter(matchesEntity)];
+  }, [auditLogs, entityFilter]);
 
   // Compute entity type dropdown options
   const entityOptions = useMemo(() => {
@@ -613,12 +629,14 @@ export default function AuditLogs({ data }) {
   const adminOptions = useMemo(() => {
     const list = ['All'];
     adminUsers.forEach((a) => {
-      const id = a.userId || a.id;
-      const name = a.fullName || a.name || `Admin #${id}`;
-      list.push(`Admin #${id}: ${name}`);
+      const name = a.fullName || a.name;
+      if (name) list.push(name);
     });
     return list;
   }, [adminUsers]);
+  const selectedAdmin = adminUsers.find(
+    (admin) => String(admin.userId || admin.id) === adminFilter
+  );
 
   // Client-side search filtering across active page items
   const filteredLogs = useMemo(() => {
@@ -751,7 +769,7 @@ export default function AuditLogs({ data }) {
             />
             <input
               type="text"
-              placeholder="Search audit ID, admin, action..."
+              placeholder="Search audit , admin, action..."
               className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-10 pr-8 text-xs font-medium !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -769,38 +787,47 @@ export default function AuditLogs({ data }) {
 
           {/* Entity Type Dropdown */}
           <ProjectDropdown
-            value={entityFilter === 'All' ? 'Entity: All' : `Entity: ${entityFilter}`}
+            value={entityFilter}
             onChange={(selected) => {
-              setEntityFilter(selected.replace('Entity: ', ''));
+              setEntityFilter(selected);
+              setActionFilter('All');
               setCurrentPage(0);
             }}
-            options={entityOptions.map((e) => (e === 'All' ? 'Entity: All' : `Entity: ${e}`))}
+            options={entityOptions}
             icon={Filter}
             testId="dropdown-audit-entity"
+            fitOptions
+            placeholder="Filter by Entity"
           />
 
           {/* Action Dropdown */}
           <ProjectDropdown
-            value={actionFilter === 'All' ? 'Action: All' : `Action: ${actionFilter}`}
+            value={actionFilter}
             onChange={(selected) => {
-              setActionFilter(selected.replace('Action: ', ''));
+              setActionFilter(selected);
               setCurrentPage(0);
             }}
-            options={actionOptions.map((a) => (a === 'All' ? 'Action: All' : `Action: ${a}`))}
+            options={actionOptions}
             icon={Database}
             testId="dropdown-audit-action"
+            fitOptions
+            placeholder="Filter by Action"
           />
 
           {/* Admin User Dropdown */}
           <ProjectDropdown
-            value={adminFilter === 'All' ? 'Admin: All' : adminFilter}
+            value={adminFilter === 'All' ? 'All' : (selectedAdmin?.fullName || selectedAdmin?.name || 'All')}
             onChange={(selected) => {
-              setAdminFilter(selected);
+              const admin = adminUsers.find(
+                (item) => (item.fullName || item.name) === selected
+              );
+              setAdminFilter(selected === 'All' ? 'All' : String(admin?.userId || admin?.id || 'All'));
               setCurrentPage(0);
             }}
             options={adminOptions}
             icon={Users}
             testId="dropdown-audit-admin"
+            placeholder="Filter by Admin"
           />
 
           {/* Reset Filters */}
@@ -820,11 +847,9 @@ export default function AuditLogs({ data }) {
           <table className="w-full text-left text-sm">
             <thead>
               <tr>
-                <Th>Audit ID</Th>
                 <Th>Admin</Th>
                 <Th>Action</Th>
                 <Th>Entity Type</Th>
-                <Th>Entity ID</Th>
                 <Th>Date / Time</Th>
                 <Th className="text-right">Details</Th>
               </tr>
@@ -842,13 +867,6 @@ export default function AuditLogs({ data }) {
                     data-testid={`row-audit-${id}`}
                     className="border-t border-[#eee8dc] hover:bg-[#faf7f0]/60 dark:border-[#21473a] dark:hover:bg-[#122b22]/50 transition-colors"
                   >
-                    {/* ID */}
-                    <Td>
-                      <span className="font-mono text-xs font-bold text-[#246b59] dark:text-[#4ade80]">
-                        #{id}
-                      </span>
-                    </Td>
-
                     {/* Admin */}
                     <Td className="font-semibold text-[#183f35] dark:text-[#edf6f2]">
                       {adminName}
@@ -874,11 +892,6 @@ export default function AuditLogs({ data }) {
                       >
                         {getEntityLabel(audit.entityType)}
                       </span>
-                    </Td>
-
-                    {/* Entity ID */}
-                    <Td className="font-mono text-xs text-[#527064] dark:text-[#9bc2b1]">
-                      #{audit.entityId}
                     </Td>
 
                     {/* Date / Time */}

@@ -324,7 +324,7 @@ function ExpenseDetailModal({ expense, qurbaniDays = [], onClose, onEdit }) {
           <div className="rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3 dark:border-[#21473a] dark:bg-[#122820]">
             <p className="font-semibold text-[#7b867e] dark:text-[#8ba79b]">Recorded By</p>
             <p className="mt-1 font-bold text-[#183f35] dark:text-[#edf6f2]">
-              Admin ID #{expense.createdByAdminId || 1}
+              Admin - {expense.createdByAdmin}
             </p>
           </div>
 
@@ -858,7 +858,6 @@ export default function ExpenseTracker({ data, patchData, notify }) {
           <table className="w-full text-left text-sm">
             <thead>
               <tr>
-                <Th>ID</Th>
                 <Th>Category</Th>
                 <Th>Amount</Th>
                 <Th>Allocation</Th>
@@ -880,13 +879,6 @@ export default function ExpenseTracker({ data, patchData, notify }) {
                     data-testid={`row-expense-${expense.expenseId}`}
                     className="border-t border-[#eee8dc] hover:bg-[#faf7f0]/60 dark:border-[#21473a] dark:hover:bg-[#122b22]/50 transition-colors"
                   >
-                    {/* ID */}
-                    <Td>
-                      <span className="font-mono text-xs font-bold text-[#246b59] dark:text-[#4ade80]">
-                        #{expense.expenseId}
-                      </span>
-                    </Td>
-
                     {/* Category */}
                     <Td>
                       <span
@@ -933,7 +925,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
 
                     {/* Admin */}
                     <Td className="font-mono text-xs text-[#7b867e] dark:text-[#8ba79b]">
-                      ID #{expense.createdByAdminId || 1}
+                      {expense.createdByAdmin}
                     </Td>
 
                     {/* Actions */}

@@ -31,7 +31,7 @@ export default function BookingDetails({
   const totalCost = booking.totalHissaCost !== undefined ? booking.totalHissaCost : (booking.cost || 0);
 
   const fields = [
-    ['Booking ID', booking.receiptNumber || booking.id || booking.hissaBookingId],
+    ['Receipt No', booking.receiptNumber || booking.id || booking.hissaBookingId],
     ['Animal', displayAnimal],
     ['Qurbani Day', displayDay],
     ['Qurbani Person Name', booking.qurbaniPersonName || booking.personName],

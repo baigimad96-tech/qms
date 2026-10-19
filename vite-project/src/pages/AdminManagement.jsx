@@ -3,7 +3,7 @@ import { Users, ShieldCheck, Eye, Pencil } from 'lucide-react';
 import { PageIntro } from './Dashboard.jsx';
 import Modal, { ModalActions, Field } from '../components/Modal.jsx';
 import { TableScroll, Th, Td, IconButton } from '../components/Table.jsx';
-import { formatShortDate, formatDateTime } from '../data/mockData.js';
+import { formatDateTime } from '../data/mockData.js';
 import { api } from '../services/api.js';
 
 export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSaving }) {
@@ -321,7 +321,6 @@ export default function AdminManagement({ notify }) {
                 <Th>Full Name</Th>
                 <Th>Email</Th>
                 <Th>Phone Number</Th>
-                <Th>Created At</Th>
                 <Th>Actions</Th>
               </tr>
             </thead>
@@ -346,7 +345,6 @@ export default function AdminManagement({ notify }) {
                   </Td>
                   <Td>{admin.email}</Td>
                   <Td>{admin.phoneNumber}</Td>
-                  <Td>{admin.createdAt ? formatShortDate(admin.createdAt) : 'N/A'}</Td>
                   <Td>
                     <div className="flex gap-1">
                       <IconButton
@@ -365,7 +363,7 @@ export default function AdminManagement({ notify }) {
               ))}
               {admins.length === 0 && !isLoading && (
                 <tr>
-                  <td colSpan="5" className="py-8 text-center text-[#7b867e]">
+                  <td colSpan="4" className="py-8 text-center text-[#7b867e]">
                     No administrators found.
                   </td>
                 </tr>

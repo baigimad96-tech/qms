@@ -237,7 +237,7 @@ export function BookingDeleteModal({
           </p>
         </div>
         <div className="soft-inset rounded-xl p-3.5">
-          <p className="text-xs text-[#78847c] dark:text-[#92b1a3]">Receipt / ID</p>
+          <p className="text-xs text-[#78847c] dark:text-[#92b1a3]">Receipt No</p>
           <p className="mt-0.5 font-bold font-mono text-[#183f35] dark:text-[#edf6f2]">
             #{booking.receiptNumber || booking.id}
           </p>

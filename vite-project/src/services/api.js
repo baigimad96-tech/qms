@@ -8,8 +8,8 @@ import {
 
 const ENV = {
   dev: {
-    // BASE_URL: ' https://ls6cx6sb-8080.inc1.devtunnels.ms/', // devtunnel
-    BASE_URL: 'https://taylor-unirritant-latina.ngrok-free.dev', // ngrok
+    BASE_URL: ' https://ls6cx6sb-8080.inc1.devtunnels.ms/', // devtunnel
+    // BASE_URL: 'https://taylor-unirritant-latina.ngrok-free.dev', // ngrok
   },
   staging: {
     BASE_URL: 'https://jih-api.ethicalint.com',
@@ -19,7 +19,7 @@ const ENV = {
   },
 };
 
-const getEnvVars = (env = 'dev') => {
+const getEnvVars = (env = 'prod') => {
   if (!ENV[env]) {
     throw new Error(`Unknown environment: ${env}`);
   }

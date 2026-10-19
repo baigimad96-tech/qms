@@ -11,7 +11,6 @@ import {
   ChevronDown,
   Check,
   Calendar,
-  Layers,
   X,
 } from 'lucide-react';
 import { PageIntro } from './Dashboard.jsx';
@@ -88,7 +87,6 @@ export function InventoryTable({ items, isLoading, onEdit, onView, onAddStock, o
       <table className="w-full text-left text-sm">
         <thead>
           <tr>
-            <Th>Animal ID</Th>
             <Th>Animal Type</Th>
             <Th>Batch Year</Th>
             <Th>Total Animals</Th>
@@ -102,7 +100,7 @@ export function InventoryTable({ items, isLoading, onEdit, onView, onAddStock, o
         <tbody>
           {isLoading ? (
             <tr>
-              <Td colSpan={9} className="py-10 text-center text-[#78847c] dark:text-[#92b1a3]">
+              <Td colSpan={8} className="py-10 text-center text-[#78847c] dark:text-[#92b1a3]">
                 <div className="flex items-center justify-center gap-2">
                   <RefreshCw size={16} className="animate-spin text-[#246b59] dark:text-[#4ade80]" />
                   <span>Loading animal batches from server...</span>
@@ -111,7 +109,7 @@ export function InventoryTable({ items, isLoading, onEdit, onView, onAddStock, o
             </tr>
           ) : items.length === 0 ? (
             <tr>
-              <Td colSpan={9} className="py-10 text-center text-[#78847c] dark:text-[#92b1a3]">
+              <Td colSpan={8} className="py-10 text-center text-[#78847c] dark:text-[#92b1a3]">
                 <div className="space-y-2">
                   <p className="font-semibold text-[#315246] dark:text-[#e0eee6]">No active batches match your filter</p>
                   <p className="text-xs">Create a new batch or reset your search & dropdown filters.</p>
@@ -133,9 +131,6 @@ export function InventoryTable({ items, isLoading, onEdit, onView, onAddStock, o
                   data-testid={`row-inventory-${id}`}
                   className="border-t border-[#eee8dc] dark:border-[#193a2f] transition hover:bg-[#faf7f0]/60 dark:hover:bg-[#132c23]"
                 >
-                  <Td>
-                    <span className="font-mono text-xs font-bold text-[#246b59] dark:text-[#4ade80]">#{id}</span>
-                  </Td>
                   <Td>
                     <span className="inline-flex items-center gap-2 font-semibold text-[#315246] dark:text-[#edf6f2]">
                       <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#e4efe7] text-[#246b59] dark:bg-[#18382d] dark:text-[#4ade80]">
@@ -592,8 +587,6 @@ export default function AnimalInventory({ data, patchData, notify }) {
   const [yearFilter, setYearFilter] = useState('All Years');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const defaultTypes = ['Buffalo', 'Mini Buffalo', 'Camel', 'Goat', 'Sheep', 'Cow'];
-  const [knownTypes, setKnownTypes] = useState(defaultTypes);
   const currentYear = new Date().getFullYear();
   const [knownYears, setKnownYears] = useState([currentYear]);
 
@@ -624,11 +617,8 @@ export default function AnimalInventory({ data, patchData, notify }) {
 
       setInventory(animalsList);
 
-      // Accumulate known types & years so dropdown options never shrink when filtering
+      // Accumulate known years so dropdown options never shrink when filtering
       if (animalsList.length > 0) {
-        setKnownTypes((prev) =>
-          Array.from(new Set([...prev, ...animalsList.map((x) => x.animalType || x.animal).filter(Boolean)]))
-        );
         setKnownYears((prev) =>
           Array.from(new Set([...prev, ...animalsList.map((x) => Number(x.batchYear)).filter(Boolean)])).sort((a, b) => b - a)
         );
@@ -671,9 +661,6 @@ export default function AnimalInventory({ data, patchData, notify }) {
   });
 
   // Extract distinct options for Custom Dropdowns
-  const allDistinctTypes = Array.from(new Set([...knownTypes, ...inventory.map((x) => x.animalType || x.animal).filter(Boolean)]));
-  const typeOptions = ['All Types', ...allDistinctTypes];
-
   const allDistinctYears = Array.from(new Set([...knownYears, ...inventory.map((x) => Number(x.batchYear)).filter(Boolean)])).sort((a, b) => b - a);
   const yearOptions = ['All Years', ...allDistinctYears.map(String)];
 
@@ -933,7 +920,7 @@ export default function AnimalInventory({ data, patchData, notify }) {
             />
             <input
               type="text"
-              placeholder="Search by ID, type, year..."
+              placeholder="Search by type, year..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-10 pr-8 text-xs font-medium !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"            />
@@ -948,19 +935,7 @@ export default function AnimalInventory({ data, patchData, notify }) {
             )}
           </div>
 
-          {/* Custom Project Dropdown: All Types */}
-          <ProjectDropdown
-            value={typeFilter}
-            onChange={(newType) => {
-              setTypeFilter(newType);
-              loadAnimals({ typeFilter: newType, yearFilter });
-            }}
-            options={typeOptions}
-            icon={Layers}
-            testId="dropdown-filter-type"
-          />
-
-          {/* Custom Project Dropdown: All Years */}
+          {/* Batch year dropdown */}
           <ProjectDropdown
             value={yearFilter}
             onChange={(newYear) => {
@@ -970,6 +945,8 @@ export default function AnimalInventory({ data, patchData, notify }) {
             options={yearOptions}
             icon={Calendar}
             testId="dropdown-filter-year"
+            placeholder="Filter by batch year"
+            placeholderValue="All Years"
           />
 
           {/* Reset Filters action */}
