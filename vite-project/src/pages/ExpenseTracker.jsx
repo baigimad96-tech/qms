@@ -9,6 +9,7 @@ import {
   Filter,
   RefreshCw,
   AlertTriangle,
+  AlertCircle,
   Check,
   Pencil,
   Eye,
@@ -385,6 +386,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
   const [dayFilter, setDayFilter] = useState('All');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [dateError, setDateError] = useState('');
 
   // Data state
   const [expenses, setExpenses] = useState(data.expenses || []);
@@ -469,6 +471,31 @@ export default function ExpenseTracker({ data, patchData, notify }) {
     fetchExpensesData();
   }, [fetchQurbaniDays, fetchExpensesData]);
 
+  // Handle Date range changes with validation
+  const handleFromDateChange = (e) => {
+    const val = e.target.value;
+    setFromDate(val);
+    if (val && toDate && val > toDate) {
+      setDateError('From date cannot be later than To date.');
+      notify?.('From date cannot be later than To date.', 'error');
+    } else {
+      setDateError('');
+    }
+  };
+
+  const handleToDateChange = (e) => {
+    const val = e.target.value;
+    setToDate(val);
+    if (val && fromDate && val < fromDate) {
+      setDateError('From date cannot be later than To date.');
+      notify?.('From date cannot be later than To date.', 'error');
+    } else {
+      setDateError('');
+    }
+  };
+
+  const isDateRangeInvalid = Boolean(fromDate && toDate && fromDate > toDate);
+
   // Client-side filtering for fast interactive searching
   const filteredExpenses = useMemo(() => {
     return expenses.filter((item) => {
@@ -494,13 +521,15 @@ export default function ExpenseTracker({ data, patchData, notify }) {
         if (Number(item.qurbaniDayId) !== dayNum) return false;
       }
 
-      // Date bounds
-      if (fromDate && item.expenseDate && item.expenseDate < fromDate) return false;
-      if (toDate && item.expenseDate && item.expenseDate > toDate) return false;
+      // Date bounds - only apply when date range is valid (prevents invalid date range from being accepted)
+      if (!isDateRangeInvalid) {
+        if (fromDate && item.expenseDate && item.expenseDate < fromDate) return false;
+        if (toDate && item.expenseDate && item.expenseDate > toDate) return false;
+      }
 
       return true;
     });
-  }, [expenses, searchQuery, categoryFilter, dayFilter, fromDate, toDate]);
+  }, [expenses, searchQuery, categoryFilter, dayFilter, fromDate, toDate, isDateRangeInvalid]);
 
   // Category dropdown options
   const categoryOptions = useMemo(() => {
@@ -516,12 +545,19 @@ export default function ExpenseTracker({ data, patchData, notify }) {
   const hasActiveFilters =
     searchQuery || categoryFilter !== 'All' || dayFilter !== 'All' || fromDate || toDate;
 
+  const hasValidFilters =
+    searchQuery ||
+    categoryFilter !== 'All' ||
+    dayFilter !== 'All' ||
+    (!isDateRangeInvalid && (fromDate || toDate));
+
   const handleResetFilters = () => {
     setSearchQuery('');
     setCategoryFilter('All');
     setDayFilter('All');
     setFromDate('');
     setToDate('');
+    setDateError('');
   };
 
   // Create Expense Handler
@@ -651,7 +687,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
 
   // Compute dynamic summary reflecting active filters or global backend summary
   const activeSummary = useMemo(() => {
-    if (!hasActiveFilters && summary.totalExpense > 0) {
+    if (!hasValidFilters && summary.totalExpense > 0) {
       return summary;
     }
     const total = filteredExpenses.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
@@ -660,11 +696,11 @@ export default function ExpenseTracker({ data, patchData, notify }) {
       .reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
     const genExp = Math.max(total - dayExp, 0);
     return {
-      totalExpense: hasActiveFilters ? total : summary.totalExpense,
-      qurbaniDayExpense: hasActiveFilters ? dayExp : summary.qurbaniDayExpense,
-      generalExpense: hasActiveFilters ? genExp : summary.generalExpense,
+      totalExpense: hasValidFilters ? total : summary.totalExpense,
+      qurbaniDayExpense: hasValidFilters ? dayExp : summary.qurbaniDayExpense,
+      generalExpense: hasValidFilters ? genExp : summary.generalExpense,
     };
-  }, [filteredExpenses, hasActiveFilters, summary]);
+  }, [filteredExpenses, hasValidFilters, summary]);
 
   return (
     <div className="space-y-6">
@@ -775,7 +811,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
         {/* Filter Toolbar with Project UI Dropdowns */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           {/* Search Box */}
-          <div className="relative w-full sm:w-72">
+          <div className="relative w-full sm:w-80 md:w-88">
             <Search
               size={15}
               className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8a948e] dark:text-[#698d80]"
@@ -823,22 +859,74 @@ export default function ExpenseTracker({ data, patchData, notify }) {
           />
 
           {/* Date Range Picker */}
-          <div className="flex h-10 items-center gap-1.5 rounded-xl border border-[#ded8ca] bg-[#faf6ed] px-3 text-xs dark:border-[#21473a] dark:bg-[#122820]">
-            <Calendar size={13} className="text-[#8a948e] dark:text-[#698d80] shrink-0" />
-            <span className="text-[11px] font-semibold text-[#8a948e] dark:text-[#698d80]">From:</span>
-            <input
-              type="date"
-              className="bg-transparent text-xs font-semibold text-[#183f35] dark:text-[#edf6f2] outline-none"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-            />
-            <span className="mx-0.5 text-[11px] font-semibold text-[#8a948e] dark:text-[#698d80]">To:</span>
-            <input
-              type="date"
-              className="bg-transparent text-xs font-semibold text-[#183f35] dark:text-[#edf6f2] outline-none"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-            />
+          <div className="flex flex-col gap-1">
+            <div
+              className={`flex h-10 items-center gap-1.5 rounded-xl border px-3 text-xs transition-colors ${
+                dateError
+                  ? 'border-[#a63f32] bg-[#fff5f5] text-[#a63f32] dark:border-red-500/70 dark:bg-red-950/30'
+                  : 'border-[#ded8ca] bg-[#faf6ed] dark:border-[#21473a] dark:bg-[#122820]'
+              }`}
+            >
+              <Calendar
+                size={13}
+                className={`shrink-0 ${
+                  dateError ? 'text-[#a63f32] dark:text-red-400' : 'text-[#8a948e] dark:text-[#698d80]'
+                }`}
+              />
+              <span
+                className={`text-[11px] font-semibold ${
+                  dateError ? 'text-[#a63f32] dark:text-red-400' : 'text-[#8a948e] dark:text-[#698d80]'
+                }`}
+              >
+                From:
+              </span>
+              <input
+                data-testid="input-expense-from-date"
+                type="date"
+                max={toDate || undefined}
+                className="bg-transparent text-xs font-semibold text-[#183f35] dark:text-[#edf6f2] outline-none"
+                value={fromDate}
+                onChange={handleFromDateChange}
+              />
+              <span
+                className={`mx-0.5 text-[11px] font-semibold ${
+                  dateError ? 'text-[#a63f32] dark:text-red-400' : 'text-[#8a948e] dark:text-[#698d80]'
+                }`}
+              >
+                To:
+              </span>
+              <input
+                data-testid="input-expense-to-date"
+                type="date"
+                min={fromDate || undefined}
+                className="bg-transparent text-xs font-semibold text-[#183f35] dark:text-[#edf6f2] outline-none"
+                value={toDate}
+                onChange={handleToDateChange}
+              />
+              {(fromDate || toDate) && (
+                <button
+                  type="button"
+                  title="Clear date range"
+                  onClick={() => {
+                    setFromDate('');
+                    setToDate('');
+                    setDateError('');
+                  }}
+                  className="ml-1 text-[#8a948e] hover:text-[#183f35] dark:hover:text-white"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+            {dateError && (
+              <span
+                data-testid="error-expense-date-range"
+                className="flex items-center gap-1 text-[11px] font-semibold text-[#a63f32] dark:text-red-400"
+              >
+                <AlertCircle size={12} className="shrink-0" />
+                {dateError}
+              </span>
+            )}
           </div>
 
           {/* Reset Filters */}

@@ -2,6 +2,7 @@ import React from 'react';
 import { Menu, Sun, Moon, LogOut } from 'lucide-react';
 import { getUser } from '../utils/auth.js';
 import { useTheme } from '../context/ThemeContext.jsx';
+import { getActiveSeasonYear } from '../utils/season.js';
 
 export default function Header({ currentLabel, setMobileNav, logout }) {
   const user = getUser();
@@ -22,7 +23,7 @@ export default function Header({ currentLabel, setMobileNav, logout }) {
         </button>
         <div className="min-w-0">
           <p className="truncate text-xs font-semibold uppercase tracking-[.15em] text-[#9b7a3a] dark:text-[#eab65a]">
-            2026 Qurbani season
+            {getActiveSeasonYear()} Qurbani season
           </p>
           <h1 className="truncate font-display text-xl font-extrabold tracking-[-.035em] text-[#183f35] sm:text-2xl dark:text-[#edf6f2]">
             {currentLabel || 'Workspace'}

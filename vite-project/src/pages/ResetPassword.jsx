@@ -18,6 +18,7 @@ import { BrandMark } from '../components/Sidebar.jsx';
 import { Field } from '../components/Modal.jsx';
 import { resetPassword } from '../services/authApi.js';
 import { useTheme } from '../context/ThemeContext.jsx';
+import { getActiveSeasonYear } from '../utils/season.js';
 
 const PASSWORD_REGEX = /^(?=\S{8,100}$)(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).*$/;
 
@@ -144,7 +145,7 @@ export default function ResetPassword({ navigate, notify }) {
             <ShieldCheck size={18} className="text-[#e7b85f]" /> End-to-end authenticated operations.
           </div>
         </div>
-        <p className="text-xs text-[#9fb9ad]">JIH Qurbani Management System · 2025 season</p>
+        <p className="text-xs text-[#9fb9ad]">JIH Qurbani Management System · {getActiveSeasonYear()} season</p>
       </div>
 
       {/* Right form container */}
