@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { ArrowRight, ArrowLeft, ShieldCheck, CheckCircle2, Sun, Moon, KeyRound } from 'lucide-react';
+import { ArrowRight, ArrowLeft, ShieldCheck, CheckCircle2, Sun, Moon, KeyRound, AlertTriangle } from 'lucide-react';
 import { BrandMark } from '../components/Sidebar.jsx';
 import { Field } from '../components/Modal.jsx';
 import { requestPasswordReset } from '../services/authApi.js';
 import { useTheme } from '../context/ThemeContext.jsx';
+import { suggestEmail } from '../utils/emailTypo.js';
+import { getActiveSeasonYear } from '../utils/season.js';
 
 export default function ForgotPassword({ navigate, notify }) {
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors: formErrors },
     setError: setFormError,
   } = useForm();
@@ -19,9 +23,21 @@ export default function ForgotPassword({ navigate, notify }) {
   const [error, setError] = useState('');
   const [submittedEmail, setSubmittedEmail] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
+  const [dismissedSuggestion, setDismissedSuggestion] = useState('');
+
+  const watchedEmail = watch('email') || '';
+  const emailSuggestion = suggestEmail(watchedEmail);
 
   const onSubmit = async (data) => {
     setError('');
+
+    // Check for domain typos before submitting
+    const suggestion = suggestEmail(data.email?.trim());
+    if (suggestion && dismissedSuggestion !== suggestion) {
+      setError(`Did you mean ${suggestion}? Please verify your email.`);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -76,7 +92,7 @@ export default function ForgotPassword({ navigate, notify }) {
             <ShieldCheck size={18} className="text-[#e7b85f]" /> Secure verification with reset token.
           </div>
         </div>
-        <p className="text-xs text-[#9fb9ad]">JIH Qurbani Management System · 2025 season</p>
+        <p className="text-xs text-[#9fb9ad]">JIH Qurbani Management System · {getActiveSeasonYear()} season</p>
       </div>
 
       {/* Right form container */}
@@ -126,10 +142,54 @@ export default function ForgotPassword({ navigate, notify }) {
                         message: 'Email must be in a valid format',
                       },
                     })}
-                    className="input"
+                    className={`input ${emailSuggestion && dismissedSuggestion !== emailSuggestion ? 'border-amber-400 focus:border-amber-500 dark:border-amber-500/70' : ''}`}
                     placeholder="admin@example.com"
                     disabled={loading}
                   />
+                  {emailSuggestion && dismissedSuggestion !== emailSuggestion && (
+                    <div
+                      data-testid="warning-email-typo"
+                      className="mt-1.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-200 animate-in fade-in"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <AlertTriangle size={14} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                        <span>
+                          Did you mean{' '}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setValue('email', emailSuggestion);
+                              setDismissedSuggestion('');
+                            }}
+                            className="font-bold underline decoration-amber-600 hover:text-amber-950 dark:hover:text-white"
+                          >
+                            {emailSuggestion}
+                          </button>
+                          ?
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setValue('email', emailSuggestion);
+                            setDismissedSuggestion('');
+                          }}
+                          className="rounded-md bg-amber-200/90 px-2 py-0.5 text-[11px] font-bold text-amber-950 transition hover:bg-amber-300 dark:bg-amber-800 dark:text-amber-100 dark:hover:bg-amber-700"
+                        >
+                          Fix typo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDismissedSuggestion(emailSuggestion)}
+                          className="text-[11px] font-medium text-amber-800/80 hover:text-amber-950 dark:text-amber-300/80 dark:hover:text-white"
+                          title="Keep entered email"
+                        >
+                          Keep as is
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {formErrors.email && (
                     <div className="mt-1 text-sm text-[#a63f32]">{formErrors.email.message}</div>
                   )}

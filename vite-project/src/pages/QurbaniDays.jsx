@@ -6,6 +6,7 @@ import Badge from '../components/Badge.jsx';
 import { formatNumber } from '../data/mockData.js';
 import { api } from '../services/api.js';
 import { getErrorMessage } from './AnimalInventory.jsx';
+import { getActiveSeasonYear } from '../utils/season.js';
 
 export function DayCard({ day, booked, index, onEdit }) {
   const capacity = day.capacity || 100;
@@ -216,7 +217,7 @@ export default function QurbaniDays({ data, patchData, notify }) {
     <div>
       <PageIntro
         eyebrow="Planning"
-        title="Qurbani days"
+        // title="Qurbani days"
         description="Protect the daily promise. These three days are fixed; only their total Hissa capacity can be adjusted."
         icon={CalendarDays}
       />
@@ -243,7 +244,7 @@ export default function QurbaniDays({ data, patchData, notify }) {
         <div>
           <p className="text-sm font-bold text-[#315246] dark:text-[#edf6f2]">Fixed Qurbani schedule</p>
           <p className="mt-1 text-sm leading-6 text-[#78847c] dark:text-[#92b1a3]">
-            Day names and order are intentionally fixed for the 2025 season. Capacity changes are recorded in the audit log.
+            Day names and order are intentionally fixed for the {getActiveSeasonYear(data)} season. Capacity changes are recorded in the audit log.
           </p>
         </div>
       </div>

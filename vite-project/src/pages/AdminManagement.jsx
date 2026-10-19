@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Users, ShieldCheck, Eye, Pencil } from 'lucide-react';
+import { Users, ShieldCheck, Eye, Pencil, AlertTriangle } from 'lucide-react';
 import { PageIntro } from './Dashboard.jsx';
 import Modal, { ModalActions, Field } from '../components/Modal.jsx';
 import { TableScroll, Th, Td, IconButton } from '../components/Table.jsx';
 import { formatDateTime } from '../data/mockData.js';
 import { api } from '../services/api.js';
+import { suggestEmail } from '../utils/emailTypo.js';
 
 export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSaving }) {
   const [form, setForm] = useState({
@@ -14,8 +15,36 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
     password: '',
   });
   const [phoneError, setPhoneError] = useState('');
+  const [emailSuggestion, setEmailSuggestion] = useState(() => suggestEmail(admin?.email || ''));
+  const [emailError, setEmailError] = useState('');
+  const [dismissedSuggestion, setDismissedSuggestion] = useState('');
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
+
+  const handleEmailChange = (e) => {
+    const val = e.target.value;
+    set('email', val);
+    setEmailError('');
+    const suggestion = suggestEmail(val);
+    setEmailSuggestion(suggestion);
+    if (suggestion !== dismissedSuggestion) {
+      setDismissedSuggestion('');
+    }
+  };
+
+  const handleApplyEmailSuggestion = () => {
+    if (emailSuggestion) {
+      set('email', emailSuggestion);
+      setEmailSuggestion(null);
+      setEmailError('');
+      setDismissedSuggestion('');
+    }
+  };
+
+  const handleDismissEmailSuggestion = () => {
+    setDismissedSuggestion(emailSuggestion);
+    setEmailError('');
+  };
 
   const handlePhoneChange = (e) => {
     // Only accept numeric digits (0-9) - strip any alphabets or non-numeric characters
@@ -50,6 +79,16 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
       return;
     }
     setPhoneError('');
+
+    // Check for email domain typos before allowing submission
+    const suggestion = suggestEmail(form.email);
+    if (suggestion && dismissedSuggestion !== suggestion) {
+      setEmailSuggestion(suggestion);
+      setEmailError(`Did you mean ${suggestion}? Please correct your email domain.`);
+      return;
+    }
+    setEmailError('');
+
     onSave(form, admin);
   };
 
@@ -82,14 +121,54 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
         <Field label="Email">
           <input
             data-testid="input-admin-email"
-            className="input"
+            className={`input ${emailSuggestion && dismissedSuggestion !== emailSuggestion ? 'border-amber-400 focus:border-amber-500 dark:border-amber-500/70' : ''}`}
             type="email"
             value={form.email}
-            onChange={(e) => set('email', e.target.value)}
+            onChange={handleEmailChange}
             required
             disabled={isSaving}
           />
-          {fieldErrors?.email && <p className="mt-1 text-sm text-[#a63f32]">{fieldErrors.email}</p>}
+          {emailSuggestion && dismissedSuggestion !== emailSuggestion && (
+            <div
+              data-testid="warning-email-typo"
+              className="mt-1.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-200 animate-in fade-in"
+            >
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle size={14} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>
+                  Did you mean{' '}
+                  <button
+                    type="button"
+                    onClick={handleApplyEmailSuggestion}
+                    className="font-bold underline decoration-amber-600 hover:text-amber-950 dark:hover:text-white"
+                  >
+                    {emailSuggestion}
+                  </button>
+                  ?
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleApplyEmailSuggestion}
+                  className="rounded-md bg-amber-200/90 px-2 py-0.5 text-[11px] font-bold text-amber-950 transition hover:bg-amber-300 dark:bg-amber-800 dark:text-amber-100 dark:hover:bg-amber-700"
+                >
+                  Fix typo
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDismissEmailSuggestion}
+                  className="text-[11px] font-medium text-amber-800/80 hover:text-amber-950 dark:text-amber-300/80 dark:hover:text-white"
+                  title="Keep entered email"
+                >
+                  Keep as is
+                </button>
+              </div>
+            </div>
+          )}
+          {(emailError || fieldErrors?.email) && (
+            <p className="mt-1 text-sm text-[#a63f32]">{emailError || fieldErrors?.email}</p>
+          )}
         </Field>
         {!admin && (
           <Field label="Password">

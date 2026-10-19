@@ -19,6 +19,7 @@ import { TableScroll, Td, IconButton } from '../components/Table.jsx';
 import { formatNumber, formatMoney } from '../data/mockData.js';
 import { api } from '../services/api.js';
 import ProjectDropdown from '../components/ProjectDropdown.jsx';
+import { getActiveSeasonYear } from '../utils/season.js';
 
 // Helper function to extract error message from API response
 export function getErrorMessage(err, fallback = 'An unexpected error occurred.') {
@@ -99,7 +100,7 @@ export function InventoryTable({ items, isLoading, onEdit, onView, onAddStock, o
             <th className={headerClassName}>Total Hissa</th>
             <th className={headerClassName}>Booked Hissa</th>
             <th className={headerClassName}>Available Hissa</th>
-            <th className={headerClassName}>Total Price</th>
+            <th className={headerClassName}>Batch Cost</th>
             <th className={headerClassName}>Actions</th>
           </tr>
         </thead>
@@ -323,7 +324,7 @@ export function InventoryModal({
   isSaving,
 }) {
   const [form, setForm] = useState({
-    batchYear: item?.batchYear ?? new Date().getFullYear(),
+    batchYear: item?.batchYear ?? getActiveSeasonYear(),
     totalAnimals: item?.totalAnimals ?? '',
     totalPrice: item?.totalPrice ?? '',
     animalType: item?.animalType || item?.animal || 'Buffalo',
@@ -412,7 +413,7 @@ export function InventoryModal({
               required
             />
           </Field>
-          <Field label="Total Price (₹)">
+          <Field label="Batch Purchase Cost (₹)">
             <input
               data-testid="input-total-price"
               className="input"
@@ -524,7 +525,7 @@ export function InventoryView({ item: initialItem, animalId, onClose, onAddStock
               : (displayItem.totalHissa || 0) - (displayItem.bookedHissa || 0)
           ),
         ],
-        ['Total Price', formatMoney(displayItem.totalPrice)],
+        ['Batch Purchase Cost', formatMoney(displayItem.totalPrice)],
       ]
     : [];
 
@@ -593,7 +594,7 @@ export default function AnimalInventory({ data, patchData, notify }) {
   const [yearFilter, setYearFilter] = useState('All Years');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const currentYear = new Date().getFullYear();
+  const currentYear = getActiveSeasonYear();
   const [knownYears, setKnownYears] = useState([currentYear]);
 
   // Fetch all animals from GET /api/v1/animals with optional backend query parameters
@@ -919,7 +920,7 @@ export default function AnimalInventory({ data, patchData, notify }) {
         {/* Search & Custom Dropdowns Toolbar */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           {/* Search Box */}
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-full sm:w-80 md:w-88">
             <Search
               size={15}
               className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8a948e] dark:text-[#698d80]"

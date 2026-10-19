@@ -739,7 +739,7 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
         {/* Filter Toolbar with Project UI Dropdowns */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           {/* Search Box */}
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-full sm:w-80 md:w-88">
             <Search
               size={15}
               className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8a948e] dark:text-[#698d80]"
@@ -747,7 +747,8 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
             <input
               data-testid="input-booking-search"
               type="text"
-              className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-10 pr-8 text-xs font-medium !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"              value={query}
+              className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-10 pr-8 text-xs font-medium !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"
+              value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search person, receipt, animal..."
             />
