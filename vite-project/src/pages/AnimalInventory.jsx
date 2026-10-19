@@ -567,7 +567,7 @@ export function InventoryView({ item: initialItem, animalId, onClose, onAddStock
             className="btn-primary text-xs flex items-center gap-1.5"
           >
             <PlusCircle size={14} />
-            <span>Add Stock (+)</span>
+            <span>Add Stock </span>
           </button>
         )}
       </div>
