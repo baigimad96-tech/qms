@@ -93,7 +93,7 @@ export function InventoryTable({ items, isLoading, onEdit, onView, onAddStock, o
       >
         <thead>
           <tr>
-            <th className={headerClassName}>Animal Type</th>
+            <th className={headerClassName}>Animal Types</th>
             <th className={headerClassName}>Batch Year</th>
             <th className={headerClassName}>Total Animals</th>
             <th className={headerClassName}>Total Hissa</th>
