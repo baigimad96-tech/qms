@@ -554,13 +554,13 @@ export default function Dashboard({ data, navigate, notify }) {
 
       {/* Analytics Insights: Revenue by Animal Type (API 26) & Meat Distribution (API 25) */}
       <div className="mb-8 grid gap-6 md:grid-cols-2">
-        {/* Revenue by Animal Type (API 26) */}
-        <section className="card-surface rounded-2xl p-5 sm:p-6">
-          <div className="mb-4 flex items-center justify-between">
+        {/* Total Booking Revenue (API 26) */}
+        <section className="card-surface rounded-2xl p-5 sm:p-6 flex flex-col justify-between">
+          <div className="flex items-center justify-between">
             <div>
-              <p className="kicker">Revenue breakdown</p>
+              <p className="kicker">Revenue</p>
               <h3 className="mt-1 font-display text-lg font-extrabold tracking-[-.03em] text-[#183f35] dark:text-[#edf6f2]">
-                Booking Revenue by Animal Type
+                Total Booking Revenue
               </h3>
             </div>
             <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#e4efe7] text-[#246b59] dark:bg-[#193a2f] dark:text-[#4ade80]">
@@ -568,45 +568,17 @@ export default function Dashboard({ data, navigate, notify }) {
             </div>
           </div>
 
-          {revenueStats && revenueStats.length > 0 ? (
-            <div className="space-y-4">
-              {revenueStats.map((rev) => {
-                const amt = Number(rev.totalBookingAmount || 0);
-                const pct = totalRevenue > 0 ? Math.min(Math.round((amt / totalRevenue) * 100), 100) : 0;
-                return (
-                  <div key={rev.animalType || 'animal'} className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-[#28463c] dark:text-[#edf6f2]">
-                        {rev.animalType}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-semibold text-[#183f35] dark:text-[#52c99a]">
-                          {formatMoney(amt)}
-                        </span>
-                        <span className="text-[11px] font-medium text-[#7b867e] dark:text-[#92b1a3]">
-                          ({pct}%)
-                        </span>
-                      </div>
-                    </div>
-                    <div className="progress-track h-2 overflow-hidden rounded-full">
-                      <div
-                        className="progress-fill h-full rounded-full bg-[#246b59] dark:bg-[#52c99a]"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="pt-2 border-t border-[#eee8dc] dark:border-[#1e493b] flex justify-between text-xs font-bold text-[#183f35] dark:text-[#edf6f2]">
-                <span>Total Collected</span>
-                <span className="font-mono text-[#246b59] dark:text-[#52c99a]">{formatMoney(totalRevenue)}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="py-6 text-center text-xs text-[#7b867e] dark:text-[#92b1a3]">
-              Revenue statistics will populate as bookings are created.
-            </div>
-          )}
+          <div className="my-auto py-6">
+            <p
+              data-testid="text-total-booking-revenue"
+              className="font-mono text-3xl sm:text-4xl font-extrabold tracking-tight text-[#183f35] dark:text-[#52c99a]"
+            >
+              {formatMoney(totalRevenue)}
+            </p>
+            <p className="mt-2 text-xs font-medium text-[#7b867e] dark:text-[#92b1a3]">
+              Total revenue collected from all confirmed bookings.
+            </p>
+          </div>
         </section>
 
         {/* Meat Requirement Statistics (API 25) */}

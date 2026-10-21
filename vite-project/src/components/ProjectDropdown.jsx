@@ -9,12 +9,14 @@ export default function ProjectDropdown({
   testId,
   className = '',
   menuClassName = '',
+  buttonClassName = '',
   fitOptions = false,
   placeholder,
   placeholderValue = 'All',
+  align = 'auto',
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [menuWidth, setMenuWidth] = useState(170);
+  const [placement, setPlacement] = useState('left');
   const containerRef = useRef(null);
   const buttonRef = useRef(null);
 
@@ -29,26 +31,43 @@ export default function ProjectDropdown({
         setIsOpen(false);
       }
     }
-    function syncWidth() {
-      if (buttonRef.current) {
-        setMenuWidth(buttonRef.current.offsetWidth || 170);
+    function updatePlacement() {
+      if (align === 'right') {
+        setPlacement('right');
+        return;
+      }
+      if (align === 'left') {
+        setPlacement('left');
+        return;
+      }
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const spaceRight = window.innerWidth - rect.left;
+        const spaceLeft = rect.right;
+        if (spaceRight < 320 && spaceLeft > spaceRight) {
+          setPlacement('right');
+        } else {
+          setPlacement('left');
+        }
       }
     }
 
-    syncWidth();
-
     if (isOpen) {
+      updatePlacement();
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleKeyDown);
-      window.addEventListener('resize', syncWidth);
+      window.addEventListener('resize', updatePlacement);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('resize', syncWidth);
+      window.removeEventListener('resize', updatePlacement);
     };
-  }, [isOpen]);
+  }, [isOpen, align]);
+
+  const displayLabel =
+    value === placeholderValue && placeholder ? placeholder : value;
 
   return (
     <div ref={containerRef} className={`relative inline-block ${className}`}>
@@ -59,14 +78,11 @@ export default function ProjectDropdown({
         onClick={() => setIsOpen((prev) => !prev)}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        style={fitOptions ? { width: 'max-content' } : undefined}
         className={`flex h-10 items-center justify-between gap-2.5 rounded-xl border px-3 text-xs font-semibold transition-all duration-200 outline-none select-none ${
           isOpen
             ? 'border-[#246b59] ring-2 ring-[#e3a84b]/20 bg-white dark:bg-[#152e25] dark:border-[#4ade80]'
             : 'border-[#ded8ca] bg-[#faf6ed] hover:bg-white hover:border-[#b8c9c0] dark:border-[#21473a] dark:bg-[#122820] dark:hover:bg-[#173329] dark:hover:border-[#2a5d4c]'
-        } text-[#183f35] dark:text-[#edf6f2] w-auto min-w-[210px] ${
-          fitOptions ? '' : 'max-w-[320px]'
-        }`}
+        } text-[#183f35] dark:text-[#edf6f2] w-auto min-w-[140px] max-w-[340px] ${buttonClassName}`}
       >
         <span className="flex min-w-0 items-center gap-2">
           {Icon && (
@@ -75,8 +91,11 @@ export default function ProjectDropdown({
               className="shrink-0 text-[#246b59] dark:text-[#4ade80]"
             />
           )}
-          <span className="whitespace-nowrap">
-            {value === placeholderValue ? (placeholder || value) : value}
+          <span
+            className="truncate"
+            title={typeof displayLabel === 'string' ? displayLabel : undefined}
+          >
+            {displayLabel}
           </span>
         </span>
         <ChevronDown
@@ -90,12 +109,9 @@ export default function ProjectDropdown({
       {isOpen && (
         <div
           role="listbox"
-          style={
-            fitOptions
-              ? { width: 'max-content', minWidth: '100%' }
-              : { width: Math.max(menuWidth, 210) }
-          }
-          className={`absolute left-0 top-full z-40 mt-1.5 max-h-60 overflow-x-hidden overflow-y-auto rounded-xl border border-[#ded8ca] bg-[#fffdfa] p-1.5 shadow-xl backdrop-blur-md dark:border-[#244f40] dark:bg-[#0f241d] animate-in fade-in-0 zoom-in-95 duration-150 ${menuClassName}`}
+          className={`absolute ${
+            placement === 'right' ? 'right-0' : 'left-0'
+          } top-full z-50 mt-1.5 w-max min-w-full max-w-[min(90vw,480px)] max-h-60 overflow-y-auto rounded-xl border border-[#ded8ca] bg-[#fffdfa] p-1.5 shadow-xl backdrop-blur-md dark:border-[#244f40] dark:bg-[#0f241d] animate-in fade-in-0 zoom-in-95 duration-150 ${menuClassName}`}
         >
           {options.map((opt) => {
             const isSelected = opt === value;
@@ -109,9 +125,7 @@ export default function ProjectDropdown({
                   onChange(opt);
                   setIsOpen(false);
                 }}
-                className={`flex ${
-                  fitOptions ? 'w-max min-w-full' : 'w-full'
-                } items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-xs transition-colors duration-150 ${
+                className={`flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left text-xs transition-colors duration-150 ${
                   isSelected
                     ? 'bg-[#e4efe7] font-bold text-[#246b59] dark:bg-[#193a2f] dark:text-[#4ade80]'
                     : 'font-medium text-[#315246] hover:bg-[#f3ede1] dark:text-[#d7e9e0] dark:hover:bg-[#163329]'

@@ -627,15 +627,16 @@ export default function AuditLogs({ data }) {
 
   // Compute admin dropdown options
   const adminOptions = useMemo(() => {
-    const list = ['All'];
+    const list = ['Admin: All'];
     adminUsers.forEach((a) => {
-      const name = a.fullName || a.name;
-      if (name) list.push(name);
+      const id = a.userId || a.id;
+      const name = a.fullName || a.name || `Admin #${id}`;
+      list.push(`Admin #${id}: ${name}`);
     });
     return list;
   }, [adminUsers]);
   const selectedAdmin = adminUsers.find(
-    (admin) => String(admin.userId || admin.id) === adminFilter
+    (admin) => String(admin.userId || admin.id) === String(adminFilter)
   );
 
   // Client-side search filtering across active page items
@@ -676,7 +677,7 @@ export default function AuditLogs({ data }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageIntro
           eyebrow="Accountability & Compliance"
-          title="Audit logs"
+          // title="Audit logs"
           description="A durable, immutable security ledger of all administrative and operational activities across inventory, bookings, and expenses."
           icon={Activity}
         />
@@ -787,47 +788,59 @@ export default function AuditLogs({ data }) {
 
           {/* Entity Type Dropdown */}
           <ProjectDropdown
-            value={entityFilter}
+            value={entityFilter === 'All' ? 'Entity: All' : `Entity: ${entityFilter}`}
             onChange={(selected) => {
-              setEntityFilter(selected);
+              const clean = selected.replace('Entity: ', '');
+              setEntityFilter(clean);
               setActionFilter('All');
               setCurrentPage(0);
             }}
-            options={entityOptions}
+            options={entityOptions.map((e) => (e === 'All' ? 'Entity: All' : `Entity: ${e}`))}
             icon={Filter}
             testId="dropdown-audit-entity"
-            fitOptions
-            placeholder="Filter by Entity"
           />
 
           {/* Action Dropdown */}
           <ProjectDropdown
-            value={actionFilter}
+            value={actionFilter === 'All' ? 'Action: All' : `Action: ${actionFilter}`}
             onChange={(selected) => {
-              setActionFilter(selected);
+              const clean = selected.replace('Action: ', '');
+              setActionFilter(clean);
               setCurrentPage(0);
             }}
-            options={actionOptions}
+            options={actionOptions.map((a) => (a === 'All' ? 'Action: All' : `Action: ${a}`))}
             icon={Database}
             testId="dropdown-audit-action"
-            fitOptions
-            placeholder="Filter by Action"
           />
 
           {/* Admin User Dropdown */}
           <ProjectDropdown
-            value={adminFilter === 'All' ? 'All' : (selectedAdmin?.fullName || selectedAdmin?.name || 'All')}
+            value={
+              adminFilter === 'All'
+                ? 'Admin: All'
+                : selectedAdmin
+                ? `Admin #${selectedAdmin.userId || selectedAdmin.id}: ${selectedAdmin.fullName || selectedAdmin.name}`
+                : 'Admin: All'
+            }
             onChange={(selected) => {
-              const admin = adminUsers.find(
-                (item) => (item.fullName || item.name) === selected
-              );
-              setAdminFilter(selected === 'All' ? 'All' : String(admin?.userId || admin?.id || 'All'));
+              if (selected === 'All' || selected === 'Admin: All') {
+                setAdminFilter('All');
+              } else {
+                const match = selected.match(/Admin #(\d+)/);
+                if (match) {
+                  setAdminFilter(match[1]);
+                } else {
+                  const admin = adminUsers.find(
+                    (item) => (item.fullName || item.name) === selected
+                  );
+                  setAdminFilter(admin ? String(admin.userId || admin.id) : 'All');
+                }
+              }
               setCurrentPage(0);
             }}
             options={adminOptions}
             icon={Users}
             testId="dropdown-audit-admin"
-            placeholder="Filter by Admin"
           />
 
           {/* Reset Filters */}
