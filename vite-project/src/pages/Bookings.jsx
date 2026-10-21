@@ -820,7 +820,7 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
           <EmptyState
             title="No bookings match"
             description="Try another name or reset your filters."
-            actionLabel="Clear filters"
+            actionLabel="Reset filters"
             onAction={() => {
               setQuery('');
               setDay('All days');
