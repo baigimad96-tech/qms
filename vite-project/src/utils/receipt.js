@@ -2,6 +2,60 @@ import { jsPDF } from 'jspdf';
 import { LOGO_BASE64 } from '../assets/logoBase64.js';
 
 /**
+ * Safely resolves human-readable animal type string from any booking representation
+ * (handles nested object, snake_case, or missing fields).
+ *
+ * @param {Object|string} booking
+ * @returns {string} Human-readable animal name (e.g. 'Buffalo', 'Goat', 'Cow')
+ */
+export function resolveAnimalType(booking) {
+  if (!booking) return 'Buffalo';
+  if (typeof booking === 'string' && booking.trim()) return booking.trim();
+
+  // 1. Direct string properties
+  if (typeof booking.animalType === 'string' && booking.animalType.trim()) {
+    return booking.animalType.trim();
+  }
+  if (typeof booking.animal_type === 'string' && booking.animal_type.trim()) {
+    return booking.animal_type.trim();
+  }
+  if (typeof booking.animalName === 'string' && booking.animalName.trim()) {
+    return booking.animalName.trim();
+  }
+  if (typeof booking.animal === 'string' && booking.animal.trim()) {
+    return booking.animal.trim();
+  }
+
+  // 2. Nested animal object on booking (e.g., booking.animal = { animalType: 'Buffalo' })
+  const animalObj =
+    typeof booking.animal === 'object' && booking.animal !== null
+      ? booking.animal
+      : typeof booking.animalType === 'object' && booking.animalType !== null
+      ? booking.animalType
+      : null;
+
+  if (animalObj) {
+    if (typeof animalObj.animalType === 'string' && animalObj.animalType.trim()) {
+      return animalObj.animalType.trim();
+    }
+    if (typeof animalObj.animal_type === 'string' && animalObj.animal_type.trim()) {
+      return animalObj.animal_type.trim();
+    }
+    if (typeof animalObj.name === 'string' && animalObj.name.trim()) {
+      return animalObj.name.trim();
+    }
+    if (typeof animalObj.type === 'string' && animalObj.type.trim()) {
+      return animalObj.type.trim();
+    }
+    if (typeof animalObj.species === 'string' && animalObj.species.trim()) {
+      return animalObj.species.trim();
+    }
+  }
+
+  return 'Buffalo';
+}
+
+/**
  * Generates a high-fidelity branded Qurbani Hissa Receipt PDF
  * featuring the official JIH logo, stylized header, golden Day badge,
  * and comprehensive allocation/cost breakdown.
@@ -84,9 +138,27 @@ export function generateBrandedReceiptPdf(booking) {
   }
 
   const receiptNumber = booking.receiptNumber || String(booking.hissaBookingId || booking.id);
-  const personName = booking.qurbaniPersonName || booking.personName || 'Anonymous';
-  const bookedBy = booking.bookedByAdminName || booking.bookedBy || 'System Administrator';
-  const animalType = booking.animalType || booking.animal || 'Animal';
+  const personName =
+    typeof booking.qurbaniPersonName === 'string' && booking.qurbaniPersonName.trim()
+      ? booking.qurbaniPersonName.trim()
+      : typeof booking.personName === 'string' && booking.personName.trim()
+      ? booking.personName.trim()
+      : typeof booking.personName === 'object' && booking.personName !== null
+      ? booking.personName.name || booking.personName.fullName || 'Anonymous'
+      : 'Anonymous';
+
+  const bookedBy =
+    typeof booking.bookedByAdminName === 'string' && booking.bookedByAdminName.trim()
+      ? booking.bookedByAdminName.trim()
+      : typeof booking.bookedBy === 'string' && booking.bookedBy.trim()
+      ? booking.bookedBy.trim()
+      : typeof booking.bookedBy === 'object' && booking.bookedBy !== null
+      ? booking.bookedBy.fullName || booking.bookedBy.name || booking.bookedBy.username || 'System Administrator'
+      : typeof booking.admin === 'object' && booking.admin !== null
+      ? booking.admin.fullName || booking.admin.name || 'System Administrator'
+      : 'System Administrator';
+
+  const animalType = resolveAnimalType(booking);
   const hissaCount = Number(booking.totalHissa || booking.hissa || 1);
   const perCost = Number(
     booking.perHissaCost !== undefined && booking.perHissaCost > 0
@@ -120,7 +192,17 @@ export function generateBrandedReceiptPdf(booking) {
     const labelW = doc.getTextWidth(label + ': ');
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(51, 65, 85);
-    doc.text(String(val || 'N/A'), x + labelW, currY);
+
+    let displayVal = val;
+    if (typeof displayVal === 'object' && displayVal !== null) {
+      displayVal =
+        displayVal.animalType ||
+        displayVal.name ||
+        displayVal.label ||
+        displayVal.fullName ||
+        'N/A';
+    }
+    doc.text(String(displayVal || 'N/A'), x + labelW, currY);
   };
 
   renderField('Receipt No', receiptNumber, col1X, y);

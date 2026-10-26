@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { ArrowRight, ShieldCheck, Eye, EyeOff, Sun, Moon, AlertTriangle } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Eye, EyeOff, Sun, Moon, AlertTriangle, Loader2, CheckCircle2 } from 'lucide-react';
 import { BrandMark } from '../components/Sidebar.jsx';
 import { Field } from '../components/Modal.jsx';
 import { api } from '../services/api.js';
@@ -9,11 +9,12 @@ import { useTheme } from '../context/ThemeContext.jsx';
 import { suggestEmail } from '../utils/emailTypo.js';
 import { getActiveSeasonYear } from '../utils/season.js';
 
-export default function Login({ onSuccess, navigate }) {
+export default function Login({ onSuccess, navigate, notify }) {
   const { handleSubmit, register, watch, setValue, formState: { errors: formErrors }, setError: setFormError } = useForm();
   const { isDark, toggleTheme } = useTheme();
 
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [dismissedSuggestion, setDismissedSuggestion] = useState('');
@@ -22,6 +23,7 @@ export default function Login({ onSuccess, navigate }) {
   const emailSuggestion = suggestEmail(watchedEmail);
 
   const submit = async (formData) => {
+    if (loading) return;
     setError('');
 
     // Check for email domain typos before submitting
@@ -32,6 +34,14 @@ export default function Login({ onSuccess, navigate }) {
     }
 
     setLoading(true);
+    const startTime = Date.now();
+
+    const ensureMinLoadingTime = async (minMs = 750) => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed < minMs) {
+        await new Promise((resolve) => setTimeout(resolve, minMs - elapsed));
+      }
+    };
 
     try {
       const payload = {
@@ -42,16 +52,35 @@ export default function Login({ onSuccess, navigate }) {
 
       const data = response.data;
 
+      await ensureMinLoadingTime(600);
+
       if (data.success) {
         setAccessToken(data.data.accessToken);
         setRefreshToken(data.data.refreshToken);
-        setUser(data.data.user);
-        onSuccess();
+        const loggedUser = data.data.user;
+        setUser(loggedUser);
+
+        const userName = loggedUser?.fullName || loggedUser?.name;
+        const toastMsg = userName
+          ? `Login successful! Welcome back, ${userName}.`
+          : 'Login successful! Redirecting to dashboard...';
+
+        setSuccessMessage('Login successful! Redirecting...');
+        if (notify) {
+          notify(toastMsg, 'success');
+        }
+
+        setTimeout(() => {
+          onSuccess?.(loggedUser);
+        }, 500);
       } else {
         setError(data.message || 'Invalid email or password');
       }
     } catch (err) {
       console.error('Login request failed:', err);
+
+      await ensureMinLoadingTime(750);
+
       if (err.response) {
         const data = err.response.data;
         if (err.response.status === 400 && data?.data && typeof data.data === 'object') {
@@ -231,13 +260,36 @@ export default function Login({ onSuccess, navigate }) {
                 {error}
               </div>
             )}
+            {successMessage && (
+              <div
+                data-testid="status-login-success"
+                className="mt-4 flex items-center gap-2 rounded-xl border border-[#b2ddcf] bg-[#eef8f4] px-4 py-3 text-sm font-semibold text-[#183f35] dark:border-[#225745] dark:bg-[#112d24] dark:text-[#52c99a]"
+              >
+                <CheckCircle2 size={16} className="shrink-0 text-[#246b59] dark:text-[#52c99a]" />
+                <span>{successMessage}</span>
+              </div>
+            )}
             <button
               data-testid="button-login"
               className="btn-primary mt-6 w-full justify-center py-3.5 disabled:opacity-70 disabled:cursor-not-allowed"
               type="submit"
-              disabled={loading}
+              disabled={loading || Boolean(successMessage)}
             >
-              {loading ? 'Logging in...' : <React.Fragment>Enter dashboard <ArrowRight size={17} /></React.Fragment>}
+              {successMessage ? (
+                <span className="inline-flex items-center gap-2">
+                  <CheckCircle2 size={17} className="text-[#a9dfb6]" />
+                  <span>Redirecting...</span>
+                </span>
+              ) : loading ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 size={17} className="animate-spin" />
+                  <span>Logging in...</span>
+                </span>
+              ) : (
+                <React.Fragment>
+                  Enter dashboard <ArrowRight size={17} />
+                </React.Fragment>
+              )}
             </button>
           </form>
         </div>

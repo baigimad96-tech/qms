@@ -37,6 +37,7 @@ import {
   EXPENSE_CATEGORIES,
 } from '../services/expenseApi.js';
 import { api } from '../services/api.js';
+import { getErrorMessage } from './AnimalInventory.jsx';
 
 // Category color styling helper
 function getCategoryBadgeClass(category) {
@@ -78,6 +79,11 @@ function getTodayDateString() {
   return today.toISOString().split('T')[0];
 }
 
+export const MAX_EXPENSE_AMOUNT = 100000000; // ₹10 Crore max (₹10,00,00,000)
+export const MAX_EXPENSE_DIGITS = 9; // up to 9 whole-rupee digits (999,999,999)
+export const MAX_EXPENSE_DECIMALS = 2; // up to 2 decimal places (.00 to .99)
+export const MAX_EXPENSE_DESC_LENGTH = 500;
+
 // Create or Edit Modal Component
 function ExpenseFormModal({
   mode = 'create',
@@ -90,6 +96,7 @@ function ExpenseFormModal({
 }) {
   const [category, setCategory] = useState(expense?.category || 'TRANSPORTATION');
   const [amount, setAmount] = useState(expense?.amount !== undefined ? String(expense.amount) : '');
+  const [amountError, setAmountError] = useState('');
   const [expenseDate, setExpenseDate] = useState(
     expense?.expenseDate || getTodayDateString()
   );
@@ -100,14 +107,262 @@ function ExpenseFormModal({
     expense?.qurbaniDayId ? String(expense.qurbaniDayId) : '1'
   );
   const [description, setDescription] = useState(expense?.description || '');
+  const [descriptionError, setDescriptionError] = useState('');
 
   const todayStr = getTodayDateString();
 
+  const handleDescriptionChange = (e) => {
+    const val = e.target.value;
+    if (val.length > MAX_EXPENSE_DESC_LENGTH) {
+      setDescription(val.slice(0, MAX_EXPENSE_DESC_LENGTH));
+      setDescriptionError(`Description cannot exceed ${MAX_EXPENSE_DESC_LENGTH} characters.`);
+    } else {
+      setDescription(val);
+      setDescriptionError('');
+    }
+  };
+
+  const handleDescriptionPaste = (e) => {
+    const pasted = e.clipboardData?.getData('text') || '';
+    const currentVal = description || '';
+    const selectionLen = (e.target.selectionEnd || 0) - (e.target.selectionStart || 0);
+    const newTotalLength = currentVal.length - selectionLen + pasted.length;
+    if (newTotalLength > MAX_EXPENSE_DESC_LENGTH) {
+      setDescriptionError(`Description cannot exceed ${MAX_EXPENSE_DESC_LENGTH} characters.`);
+    } else {
+      setDescriptionError('');
+    }
+  };
+
+  const handleAmountKeyDown = (e) => {
+    // Standard navigation and clipboard controls allowed
+    if (
+      e.key === 'Backspace' ||
+      e.key === 'Delete' ||
+      e.key === 'Tab' ||
+      e.key === 'ArrowLeft' ||
+      e.key === 'ArrowRight' ||
+      e.key === 'ArrowUp' ||
+      e.key === 'ArrowDown' ||
+      e.key === 'Home' ||
+      e.key === 'End' ||
+      e.key === 'Enter' ||
+      e.key === 'Escape' ||
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey
+    ) {
+      return;
+    }
+
+    // Disallow signs and scientific notation
+    if (['e', 'E', '+', '-'].includes(e.key)) {
+      e.preventDefault();
+      setAmountError('Scientific notation and signs are not allowed.');
+      return;
+    }
+
+    // Disallow non-numeric characters (only digits and decimal point allowed)
+    if (!/^\d$/.test(e.key) && e.key !== '.') {
+      e.preventDefault();
+      setAmountError('Only numbers and a decimal point are allowed.');
+      return;
+    }
+
+    // Disallow more than one decimal point
+    if (e.key === '.') {
+      if (amount.includes('.')) {
+        e.preventDefault();
+        setAmountError('Only one decimal point is allowed.');
+      }
+      return;
+    }
+
+    // Restrict typing more digits beyond maximum business constraints
+    const input = e.target;
+    const hasSelection =
+      input &&
+      typeof input.selectionStart === 'number' &&
+      typeof input.selectionEnd === 'number' &&
+      input.selectionStart !== input.selectionEnd;
+
+    if (!hasSelection) {
+      const cursor = input?.selectionStart ?? amount.length;
+      const dotIndex = amount.indexOf('.');
+
+      if (dotIndex === -1) {
+        if (amount.length >= MAX_EXPENSE_DIGITS) {
+          e.preventDefault();
+          setAmountError(`Expense amount exceeds the permitted limit of ₹10,00,00,000 (10 Crore, max ${MAX_EXPENSE_DIGITS} digits).`);
+          return;
+        }
+      } else if (cursor <= dotIndex) {
+        const wholePart = amount.slice(0, dotIndex);
+        if (wholePart.length >= MAX_EXPENSE_DIGITS) {
+          e.preventDefault();
+          setAmountError(`Expense amount exceeds the permitted limit of ₹10,00,00,000 (10 Crore, max ${MAX_EXPENSE_DIGITS} digits).`);
+          return;
+        }
+      } else {
+        const decimalPart = amount.slice(dotIndex + 1);
+        if (decimalPart.length >= MAX_EXPENSE_DECIMALS) {
+          e.preventDefault();
+          setAmountError('Expense amount cannot have more than 2 decimal places.');
+          return;
+        }
+      }
+    }
+  };
+
+  const handleAmountPaste = (e) => {
+    const pasted = e.clipboardData?.getData('text') || '';
+    const clean = pasted.trim();
+
+    if (/[eE+\-]/.test(clean)) {
+      e.preventDefault();
+      setAmountError('Scientific notation and signs are not allowed.');
+      return;
+    }
+
+    if (clean !== '' && !/^\d*(\.\d*)?$/.test(clean)) {
+      e.preventDefault();
+      setAmountError('Please paste a valid numeric amount.');
+      return;
+    }
+
+    const [wholePart = '', decimalPart = ''] = clean.split('.');
+    if (wholePart.length > MAX_EXPENSE_DIGITS) {
+      e.preventDefault();
+      setAmountError(`Expense amount exceeds the permitted limit of ₹10,00,00,000 (10 Crore, max ${MAX_EXPENSE_DIGITS} digits).`);
+      return;
+    }
+
+    if (decimalPart.length > MAX_EXPENSE_DECIMALS) {
+      e.preventDefault();
+      setAmountError('Expense amount cannot have more than 2 decimal places.');
+      return;
+    }
+
+    const num = Number(clean);
+    if (!isNaN(num) && (num > MAX_EXPENSE_AMOUNT || clean.length > 12)) {
+      e.preventDefault();
+      setAmountError('Expense amount exceeds the permitted limit of ₹10,00,00,000 (10 Crore).');
+    }
+  };
+
+  const handleAmountChange = (e) => {
+    let val = e.target.value;
+
+    if (val === '') {
+      setAmountError('');
+      setAmount('');
+      return;
+    }
+
+    // Strip out any non-numeric or non-dot characters
+    if (/[^0-9.]/.test(val)) {
+      val = val.replace(/[^0-9.]/g, '');
+    }
+
+    // Handle multiple dots (keep only first)
+    const dotParts = val.split('.');
+    if (dotParts.length > 2) {
+      val = `${dotParts[0]}.${dotParts.slice(1).join('')}`;
+    }
+
+    // Strictly enforce MAX_EXPENSE_DIGITS on whole number part
+    const [whole = '', decimal] = val.split('.');
+    let trimmedWhole = whole;
+    let limitExceeded = false;
+
+    if (trimmedWhole.length > MAX_EXPENSE_DIGITS) {
+      trimmedWhole = trimmedWhole.slice(0, MAX_EXPENSE_DIGITS);
+      limitExceeded = true;
+    }
+
+    // Strictly enforce MAX_EXPENSE_DECIMALS on decimal part
+    let trimmedDecimal = decimal;
+    if (trimmedDecimal !== undefined && trimmedDecimal.length > MAX_EXPENSE_DECIMALS) {
+      trimmedDecimal = trimmedDecimal.slice(0, MAX_EXPENSE_DECIMALS);
+      limitExceeded = true;
+    }
+
+    val = trimmedDecimal !== undefined ? `${trimmedWhole}.${trimmedDecimal}` : trimmedWhole;
+
+    const num = Number(val);
+    if (isNaN(num) || !Number.isFinite(num)) {
+      setAmountError('Please enter a valid numeric amount.');
+    } else if (num < 0) {
+      setAmountError('Expense amount must be greater than zero.');
+    } else if (num > MAX_EXPENSE_AMOUNT || limitExceeded) {
+      setAmountError(`Expense amount exceeds the permitted limit of ₹10,00,00,000 (10 Crore, max ${MAX_EXPENSE_DIGITS} digits).`);
+    } else {
+      setAmountError('');
+    }
+
+    setAmount(val);
+  };
+
+  const numAmount = Number(amount);
+  const amountStr = String(amount || '').trim();
+  const [amountWholePart = '', amountDecimalPart = ''] = amountStr.split('.');
+  const isAmountValid =
+    amountStr !== '' &&
+    !amountError &&
+    !/[eE+\-]/.test(amountStr) &&
+    !isNaN(numAmount) &&
+    Number.isFinite(numAmount) &&
+    numAmount > 0 &&
+    numAmount <= MAX_EXPENSE_AMOUNT &&
+    amountWholePart.length <= MAX_EXPENSE_DIGITS &&
+    amountDecimalPart.length <= MAX_EXPENSE_DECIMALS;
+
+  const isDescriptionValid = description.length <= MAX_EXPENSE_DESC_LENGTH;
+
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    const cleanStr = String(amount || '').trim();
+    if (!cleanStr) {
+      setAmountError('Expense amount is required.');
+      return;
+    }
+
+    if (/[eE+\-]/.test(cleanStr) || /[^0-9.]/.test(cleanStr)) {
+      setAmountError('Please enter a valid numeric amount.');
+      return;
+    }
+
+    const num = Number(cleanStr);
+    if (isNaN(num) || !Number.isFinite(num)) {
+      setAmountError('Please enter a valid numeric amount.');
+      return;
+    }
+
+    if (num <= 0) {
+      setAmountError('Expense amount must be greater than zero.');
+      return;
+    }
+
+    const wholePart = cleanStr.split('.')[0] || '';
+    if (num > MAX_EXPENSE_AMOUNT || wholePart.length > MAX_EXPENSE_DIGITS) {
+      setAmountError(`Expense amount exceeds the permitted limit of ₹10,00,00,000 (10 Crore, max ${MAX_EXPENSE_DIGITS} digits).`);
+      return;
+    }
+
+    const decimalPart = cleanStr.split('.')[1];
+    if (decimalPart && decimalPart.length > MAX_EXPENSE_DECIMALS) {
+      setAmountError('Expense amount cannot have more than 2 decimal places.');
+      return;
+    }
+
+    if (!isDescriptionValid) {
+      return;
+    }
+
     const payload = {
       category,
-      amount: parseFloat(amount),
+      amount: parseFloat(cleanStr),
       expenseDate,
       qurbaniDayId: allocationType === 'day' ? Number(selectedDayId) : null,
       description: description.trim() || null,
@@ -139,7 +394,7 @@ function ExpenseFormModal({
           {/* Category Dropdown */}
           <Field label="Category *">
             <select
-              className="input text-xs font-semibold"
+              className="input text-sm font-semibold"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               required
@@ -159,16 +414,29 @@ function ExpenseFormModal({
                 ₹
               </span>
               <input
-                type="number"
-                step="0.01"
-                min="0.01"
+                data-testid="input-expense-amount"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*\.?[0-9]*"
+                maxLength={12}
                 placeholder="e.g. 15000"
-                className="input pl-9 text-sm font-semibold"
+                className={`input pl-9 text-sm font-semibold ${amountError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={handleAmountChange}
+                onKeyDown={handleAmountKeyDown}
+                onPaste={handleAmountPaste}
                 required
               />
             </div>
+            {amountError ? (
+              <p data-testid="error-expense-amount" className="mt-1 text-xs font-medium text-[#a63f32] dark:text-[#fca5a5]">
+                {amountError}
+              </p>
+            ) : (
+              <span className="mt-1 block text-[10px] text-[#7b867e] dark:text-[#8ba79b]">
+                Maximum: ₹10,00,00,000 (10 Crore, max 9 digits).
+              </span>
+            )}
           </Field>
         </div>
 
@@ -178,7 +446,7 @@ function ExpenseFormModal({
             <input
               type="date"
               max={todayStr}
-              className="input text-xs"
+              className="input text-sm"
               value={expenseDate}
               onChange={(e) => setExpenseDate(e.target.value)}
               required
@@ -223,7 +491,7 @@ function ExpenseFormModal({
         {allocationType === 'day' && (
           <Field label="Select Qurbani Day *">
             <select
-              className="input text-xs font-semibold"
+              className="input text-sm font-semibold"
               value={selectedDayId}
               onChange={(e) => setSelectedDayId(e.target.value)}
               required
@@ -247,13 +515,48 @@ function ExpenseFormModal({
 
         {/* Description / Notes */}
         <Field label="Description (Optional)">
-          <textarea
-            rows={3}
-            placeholder="Details of expense, vendor name, purpose..."
-            className="input resize-none text-xs"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
+          <div className="relative">
+            <textarea
+              data-testid="input-expense-description"
+              rows={3}
+              maxLength={MAX_EXPENSE_DESC_LENGTH}
+              placeholder="Details of expense, vendor name, purpose..."
+              className={`input resize-none text-sm placeholder:text-sm leading-relaxed transition ${
+                descriptionError || description.length > MAX_EXPENSE_DESC_LENGTH
+                  ? '!border-[#dc2626] !ring-[#dc2626]/20'
+                  : ''
+              }`}
+              value={description}
+              onChange={handleDescriptionChange}
+              onPaste={handleDescriptionPaste}
+            />
+          </div>
+          <div className="mt-1 flex items-center justify-between text-xs">
+            {descriptionError || description.length > MAX_EXPENSE_DESC_LENGTH ? (
+              <p
+                data-testid="error-expense-description"
+                className="text-xs font-medium text-[#a63f32] dark:text-[#fca5a5]"
+              >
+                {descriptionError || `Description cannot exceed ${MAX_EXPENSE_DESC_LENGTH} characters.`}
+              </p>
+            ) : (
+              <span className="text-[11px] text-[#7b867e] dark:text-[#8ba79b]">
+                Maximum {MAX_EXPENSE_DESC_LENGTH} characters.
+              </span>
+            )}
+            <span
+              data-testid="counter-expense-description"
+              className={`ml-auto font-mono text-[11px] ${
+                description.length > MAX_EXPENSE_DESC_LENGTH
+                  ? 'font-bold text-[#dc2626] dark:text-[#fca5a5]'
+                  : description.length >= MAX_EXPENSE_DESC_LENGTH * 0.9
+                  ? 'font-semibold text-amber-600 dark:text-amber-400'
+                  : 'text-[#7b867e] dark:text-[#8ba79b]'
+              }`}
+            >
+              {description.length}/{MAX_EXPENSE_DESC_LENGTH}
+            </span>
+          </div>
         </Field>
 
         <ModalActions
@@ -267,6 +570,7 @@ function ExpenseFormModal({
               ? 'Save Changes'
               : 'Record Expense'
           }
+          disabled={isSubmitting || !isAmountValid || !isDescriptionValid}
         />
       </form>
     </Modal>
@@ -288,19 +592,19 @@ function ExpenseDetailModal({ expense, qurbaniDays = [], onClose, onEdit }) {
       description="Detailed ledger entry and verification trail."
       onClose={onClose}
     >
-      <div className="space-y-4">
+      <div className="space-y-4 min-w-0">
         {/* Top Info Banner */}
-        <div className="flex items-center justify-between rounded-xl bg-[#f4efe4] p-4 dark:bg-[#153428]">
-          <div>
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-[#f4efe4] p-4 dark:bg-[#153428] min-w-0">
+          <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-wider text-[#7b867e] dark:text-[#90ae9f]">
               Expense Amount
             </p>
-            <p className="mt-1 font-display text-2xl font-extrabold text-[#183f35] dark:text-[#edf6f2]">
+            <p className="mt-1 font-display text-2xl font-extrabold text-[#183f35] dark:text-[#edf6f2] truncate">
               ₹{formatNumber(expense.amount)}
             </p>
           </div>
           <span
-            className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-xs font-bold ${getCategoryBadgeClass(
+            className={`inline-flex shrink-0 items-center justify-center text-center rounded-lg border px-3 py-1.5 text-xs font-bold ${getCategoryBadgeClass(
               expense.category
             )}`}
           >
@@ -310,38 +614,38 @@ function ExpenseDetailModal({ expense, qurbaniDays = [], onClose, onEdit }) {
 
         {/* Attributes Grid */}
         <div className="grid grid-cols-2 gap-3 text-xs">
-          <div className="rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3 dark:border-[#21473a] dark:bg-[#122820]">
+          <div className="min-w-0 rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3 dark:border-[#21473a] dark:bg-[#122820]">
             <p className="font-semibold text-[#7b867e] dark:text-[#8ba79b]">Expense Date</p>
-            <p className="mt-1 font-bold text-[#183f35] dark:text-[#edf6f2]">
+            <p className="mt-1 font-bold text-[#183f35] dark:text-[#edf6f2] truncate">
               {expense.expenseDate ? formatShortDate(expense.expenseDate) : '—'}
             </p>
           </div>
 
-          <div className="rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3 dark:border-[#21473a] dark:bg-[#122820]">
+          <div className="min-w-0 rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3 dark:border-[#21473a] dark:bg-[#122820]">
             <p className="font-semibold text-[#7b867e] dark:text-[#8ba79b]">Allocation</p>
-            <p className="mt-1 font-bold text-[#183f35] dark:text-[#edf6f2]">{dayInfo}</p>
+            <p className="mt-1 font-bold text-[#183f35] dark:text-[#edf6f2] truncate" title={dayInfo}>{dayInfo}</p>
           </div>
 
-          <div className="rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3 dark:border-[#21473a] dark:bg-[#122820]">
+          <div className="min-w-0 rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3 dark:border-[#21473a] dark:bg-[#122820]">
             <p className="font-semibold text-[#7b867e] dark:text-[#8ba79b]">Recorded By</p>
-            <p className="mt-1 font-bold text-[#183f35] dark:text-[#edf6f2]">
+            <p className="mt-1 font-bold text-[#183f35] dark:text-[#edf6f2] truncate" title={`Admin - ${expense.createdByAdmin}`}>
               Admin - {expense.createdByAdmin}
             </p>
           </div>
 
-          <div className="rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3 dark:border-[#21473a] dark:bg-[#122820]">
+          <div className="min-w-0 rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3 dark:border-[#21473a] dark:bg-[#122820]">
             <p className="font-semibold text-[#7b867e] dark:text-[#8ba79b]">Last Updated</p>
-            <p className="mt-1 font-bold text-[#183f35] dark:text-[#edf6f2]">
+            <p className="mt-1 font-bold text-[#183f35] dark:text-[#edf6f2] truncate">
               {expense.updatedAt ? formatDateTime(expense.updatedAt) : '—'}
             </p>
           </div>
         </div>
 
         {/* Description */}
-        <div className="rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3.5 text-xs dark:border-[#21473a] dark:bg-[#122820]">
+        <div className="min-w-0 overflow-hidden rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3.5 text-xs dark:border-[#21473a] dark:bg-[#122820]">
           <p className="font-semibold text-[#7b867e] dark:text-[#8ba79b]">Description / Notes</p>
-          <p className="mt-1.5 leading-relaxed text-[#183f35] dark:text-[#edf6f2]">
-            {expense.description || <span className="italic text-[#8ba79b]">No description recorded.</span>}
+          <p className="mt-1.5 leading-relaxed text-[#183f35] dark:text-[#edf6f2] break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
+            {expense.description?.trim() || <span className="text-[#7b867e] dark:text-[#8ba79b]">—</span>}
           </p>
         </div>
 
@@ -397,7 +701,6 @@ export default function ExpenseTracker({ data, patchData, notify }) {
   });
   const [qurbaniDays, setQurbaniDays] = useState(data.days || []);
   const [isLoading, setIsLoading] = useState(true);
-  const [isBackendConnected, setIsBackendConnected] = useState(true);
 
   // Modal states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -437,7 +740,6 @@ export default function ExpenseTracker({ data, patchData, notify }) {
       ]);
 
       if (listRes?.data) {
-        setIsBackendConnected(true);
         let items = [];
         if (Array.isArray(listRes.data)) {
           items = listRes.data;
@@ -447,7 +749,6 @@ export default function ExpenseTracker({ data, patchData, notify }) {
         setExpenses(items);
       } else {
         // Fallback to local mock state if backend is unreachable
-        setIsBackendConnected(false);
         setExpenses((prev) => (prev.length > 0 ? prev : data.expenses || []));
       }
 
@@ -460,7 +761,6 @@ export default function ExpenseTracker({ data, patchData, notify }) {
       }
     } catch (err) {
       console.warn('Expense fetch error, using local fallback:', err);
-      setIsBackendConnected(false);
     } finally {
       setIsLoading(false);
     }
@@ -562,6 +862,13 @@ export default function ExpenseTracker({ data, patchData, notify }) {
 
   // Create Expense Handler
   const handleCreateSubmit = async (payload) => {
+    const num = Number(payload.amount);
+    const whole = String(payload.amount || '').split('.')[0] || '';
+    if (!num || isNaN(num) || num <= 0 || num > MAX_EXPENSE_AMOUNT || whole.length > MAX_EXPENSE_DIGITS) {
+      setApiError(`Expense amount exceeds the permitted limit of ₹10,00,00,000 (10 Crore, max ${MAX_EXPENSE_DIGITS} digits).`);
+      return;
+    }
+
     setIsSubmitting(true);
     setApiError(null);
     try {
@@ -581,13 +888,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
       fetchExpensesData();
     } catch (err) {
       console.error('Failed to create expense:', err);
-      const msg =
-        err.response?.data?.message ||
-        (err.response?.data?.data && typeof err.response.data.data === 'object'
-          ? Object.values(err.response.data.data).join(', ')
-          : null) ||
-        err.message ||
-        'Failed to record expense.';
+      const msg = getErrorMessage(err, 'Failed to record expense.');
 
       // If backend is offline, save locally
       if (!err.response) {
@@ -614,6 +915,14 @@ export default function ExpenseTracker({ data, patchData, notify }) {
   // Edit Expense Handler
   const handleEditSubmit = async (payload) => {
     if (!editingExpense) return;
+
+    const num = Number(payload.amount);
+    const whole = String(payload.amount || '').split('.')[0] || '';
+    if (!num || isNaN(num) || num <= 0 || num > MAX_EXPENSE_AMOUNT || whole.length > MAX_EXPENSE_DIGITS) {
+      setApiError(`Expense amount exceeds the permitted limit of ₹10,00,00,000 (10 Crore, max ${MAX_EXPENSE_DIGITS} digits).`);
+      return;
+    }
+
     setIsSubmitting(true);
     setApiError(null);
 
@@ -624,13 +933,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
       fetchExpensesData();
     } catch (err) {
       console.error('Failed to update expense:', err);
-      const msg =
-        err.response?.data?.message ||
-        (err.response?.data?.data && typeof err.response.data.data === 'object'
-          ? Object.values(err.response.data.data).join(', ')
-          : null) ||
-        err.message ||
-        'Failed to update expense.';
+      const msg = getErrorMessage(err, 'Failed to update expense.');
 
       if (!err.response) {
         // Update locally
@@ -743,7 +1046,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
         <StatCard
           label="Total Operational Outflow"
           value={`₹${formatNumber(activeSummary.totalExpense)}`}
-          sub={hasActiveFilters ? 'Filtered total' : 'Combined day & general expenditures'}
+          sub={hasActiveFilters ? 'Sum of filtered expenses' : 'Sum of all recorded expenses'}
           icon={ReceiptIndianRupee}
           color="gold"
           delay={0}
@@ -751,7 +1054,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
         <StatCard
           label="Day-Specific Expenses"
           value={`₹${formatNumber(activeSummary.qurbaniDayExpense)}`}
-          sub={hasActiveFilters ? 'Filtered day costs' : 'Costs tied to Qurbani Days 1, 2, or 3'}
+          sub={hasActiveFilters ? 'Sum of filtered day expenses' : 'Sum of day-allocated expenses'}
           icon={CalendarDays}
           color="green"
           delay={1}
@@ -759,15 +1062,19 @@ export default function ExpenseTracker({ data, patchData, notify }) {
         <StatCard
           label="General Overhead"
           value={`₹${formatNumber(activeSummary.generalExpense)}`}
-          sub={hasActiveFilters ? 'Filtered overhead' : 'Unlinked site & facility expenses'}
+          sub={hasActiveFilters ? 'Sum of filtered overhead expenses' : 'Sum of general overhead expenses'}
           icon={TrendingDown}
           color="teal"
           delay={2}
         />
         <StatCard
           label="Total Ledger Records"
-          value={formatNumber(expenses.length)}
-          sub={`${filteredExpenses.length} currently shown in filter`}
+          value={formatNumber(filteredExpenses.length)}
+          sub={
+            hasActiveFilters
+              ? `${filteredExpenses.length} of ${expenses.length} records shown`
+              : 'Count of all expense records'
+          }
           icon={Layers}
           color="orange"
           delay={3}
@@ -776,26 +1083,10 @@ export default function ExpenseTracker({ data, patchData, notify }) {
 
       {/* Main Card with Filter Toolbar & Table */}
       <section className="card-surface rounded-2xl p-5 sm:p-6">
-        {/* Table Title & Connectivity Indicator */}
+        {/* Table Title */}
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="flex items-center gap-2">
-              <p className="kicker">Operational Ledger</p>
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                  isBackendConnected
-                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                    : 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-                }`}
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    isBackendConnected ? 'bg-emerald-500' : 'bg-amber-500'
-                  }`}
-                />
-                {isBackendConnected ? 'Backend Connected' : 'Local Storage'}
-              </span>
-            </div>
+            <p className="kicker">Operational Ledger</p>
             <h3 className="mt-1 font-display text-xl font-extrabold text-[#183f35] dark:text-[#edf6f2]">
               Tracked Expenditures
             </h3>
@@ -950,7 +1241,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
                 <Th>Amount</Th>
                 <Th>Allocation</Th>
                 <Th>Expense Date</Th>
-                <Th>Description</Th>
+                <Th className="w-48 sm:w-60 max-w-[240px]">Description</Th>
                 <Th>Admin</Th>
                 <Th className="text-right">Actions</Th>
               </tr>
@@ -970,7 +1261,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
                     {/* Category */}
                     <Td>
                       <span
-                        className={`inline-flex items-center rounded-lg border px-2.5 py-1 text-xs font-bold ${getCategoryBadgeClass(
+                        className={`inline-flex items-center justify-center text-center rounded-lg border px-2.5 py-1 text-xs font-bold ${getCategoryBadgeClass(
                           expense.category
                         )}`}
                       >
@@ -1005,10 +1296,20 @@ export default function ExpenseTracker({ data, patchData, notify }) {
                     </Td>
 
                     {/* Description */}
-                    <Td className="max-w-[240px] truncate text-xs text-[#55675e] dark:text-[#b4cbbe]">
-                      {expense.description || (
-                        <span className="italic text-[#92a49b]">No description</span>
-                      )}
+                    <Td
+                      className="max-w-[200px] sm:max-w-[260px] overflow-hidden"
+                      title={expense.description || ''}
+                    >
+                      <div
+                        className="max-w-[200px] sm:max-w-[260px] truncate text-xs text-[#55675e] dark:text-[#b4cbbe]"
+                        title={expense.description || ''}
+                      >
+                        {expense.description?.trim() ? (
+                          expense.description
+                        ) : (
+                          <span className="text-[#7b867e] dark:text-[#8ba79b]">—</span>
+                        )}
+                      </div>
                     </Td>
 
                     {/* Admin */}

@@ -26,39 +26,50 @@ import { formatDateTime, formatMoney, formatNumber } from '../data/mockData.js';
 import { getAuditLogs, getAuditLogById, AUDIT_ENTITY_TYPES } from '../services/auditApi.js';
 import { api } from '../services/api.js';
 
-// Action badge styling helper
-function getActionBadgeStyle(action) {
+// Action badge styling helper - WCAG 2.1 AA/AAA compliant high contrast colors
+export function getActionBadgeStyle(action) {
   const act = String(action || '').toUpperCase();
   if (act.includes('CREATED')) {
-    return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900';
+    return 'bg-emerald-100 text-emerald-950 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-200 dark:border-emerald-800';
   }
   if (act.includes('UPDATED') || act.includes('STOCK_ADDED') || act.includes('CAPACITY')) {
-    return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-900';
+    return 'bg-blue-100 text-blue-950 border-blue-300 dark:bg-blue-950/80 dark:text-blue-200 dark:border-blue-800';
   }
   if (act.includes('DELETED')) {
-    return 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-900';
+    return 'bg-rose-100 text-rose-950 border-rose-300 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-800';
   }
-  return 'bg-[#eef4ed] text-[#246b59] border-[#ded7c8] dark:bg-[#16382b] dark:text-[#4ade80] dark:border-[#225744]';
+  return 'bg-[#e4efe8] text-[#143d32] border-[#b9d5c8] dark:bg-[#16382b] dark:text-[#86efac] dark:border-[#225744]';
 }
 
-// Entity badge styling helper
-function getEntityBadgeStyle(entityType) {
+// Entity badge styling helper - WCAG 2.1 AA/AAA compliant high contrast colors
+export function getEntityBadgeStyle(entityType) {
   const ent = String(entityType || '').toUpperCase();
   switch (ent) {
     case 'ANIMAL':
-      return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-900';
+      return 'bg-amber-100 text-amber-950 border-amber-300 dark:bg-amber-950/80 dark:text-amber-200 dark:border-amber-800';
     case 'HISSA_BOOKING':
-      return 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-900';
+      return 'bg-teal-100 text-teal-950 border-teal-300 dark:bg-teal-950/80 dark:text-teal-200 dark:border-teal-800';
     case 'USER':
     case 'ADMIN':
-      return 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/50 dark:text-purple-300 dark:border-purple-900';
+      return 'bg-purple-100 text-purple-950 border-purple-300 dark:bg-purple-950/80 dark:text-purple-200 dark:border-purple-800';
     case 'QURBANI_DAY':
-      return 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/50 dark:text-sky-300 dark:border-sky-900';
+      return 'bg-sky-100 text-sky-950 border-sky-300 dark:bg-sky-950/80 dark:text-sky-200 dark:border-sky-800';
     case 'EXPENSE':
-      return 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-900';
+      return 'bg-indigo-100 text-indigo-950 border-indigo-300 dark:bg-indigo-950/80 dark:text-indigo-200 dark:border-indigo-800';
     default:
-      return 'bg-[#f4efe4] text-[#41685a] border-[#ded7c8] dark:bg-[#18362b] dark:text-[#9bc2b1] dark:border-[#285745]';
+      return 'bg-[#eee9dc] text-[#1c3a30] border-[#cfc6b2] dark:bg-[#18362b] dark:text-[#a7f3d0] dark:border-[#285745]';
   }
+}
+
+// Human readable action label helper (converts SNAKE_CASE backend enums to human-friendly Title Case)
+export function formatActionLabel(action) {
+  if (!action) return '—';
+  if (action === 'All') return 'All';
+  return String(action)
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim();
 }
 
 // Human readable entity label helper
@@ -117,6 +128,115 @@ function getEntityIdLabel(entityType) {
     default:
       return 'Entity ID';
   }
+}
+
+// Robust entity identifier extraction helper across audit record fields and payloads
+export function getEntityIdentifier(audit, oldPayload = null, newPayload = null) {
+  if (!audit) return '';
+
+  const oldP = oldPayload || parseAuditPayload(audit.oldValue);
+  const newP = newPayload || parseAuditPayload(audit.newValue);
+  const entityType = String(audit.entityType || '').toUpperCase();
+
+  // 1. If it's a booking, prioritize receipt number (e.g. QB-2026-000038)
+  if (entityType === 'HISSA_BOOKING' || String(audit.action || '').includes('BOOKING')) {
+    const receiptNo =
+      audit.receiptNumber ||
+      audit.receiptNo ||
+      newP?.receiptNumber ||
+      newP?.receiptNo ||
+      oldP?.receiptNumber ||
+      oldP?.receiptNo;
+    if (receiptNo) return String(receiptNo).trim();
+
+    const bookingId =
+      audit.bookingId ||
+      audit.hissaBookingId ||
+      newP?.hissaBookingId ||
+      newP?.bookingId ||
+      oldP?.hissaBookingId ||
+      oldP?.bookingId;
+    if (bookingId) return String(bookingId).trim();
+  }
+
+  // 2. Direct entityId or alternative names on audit
+  const directId =
+    audit.entityId ||
+    audit.entity_id ||
+    audit.targetId ||
+    audit.target_id ||
+    audit.recordId ||
+    audit.record_id ||
+    audit.entityIdentifier;
+  if (directId) return String(directId).trim();
+
+  // 3. Entity-type specific properties on audit
+  if (entityType === 'ANIMAL' && audit.animalId) return String(audit.animalId).trim();
+  if (entityType === 'EXPENSE' && audit.expenseId) return String(audit.expenseId).trim();
+  if ((entityType === 'USER' || entityType === 'ADMIN') && (audit.userId || audit.adminId)) {
+    return String(audit.userId || audit.adminId).trim();
+  }
+  if (entityType === 'QURBANI_DAY' && (audit.qurbaniDayId || audit.dayId)) {
+    return String(audit.qurbaniDayId || audit.dayId).trim();
+  }
+
+  // 4. Look inside newPayload or oldPayload for entity-specific IDs
+  const payloads = [newP, oldP].filter((p) => p && typeof p === 'object');
+  for (const p of payloads) {
+    if (entityType === 'HISSA_BOOKING' || String(audit.action || '').includes('BOOKING')) {
+      if (p.receiptNumber) return String(p.receiptNumber).trim();
+      if (p.hissaBookingId) return String(p.hissaBookingId).trim();
+      if (p.bookingId) return String(p.bookingId).trim();
+      if (p.id) return String(p.id).trim();
+    } else if (entityType === 'ANIMAL') {
+      if (p.animalId) return String(p.animalId).trim();
+      if (p.batchYear && p.animalType) return `${p.animalType} (${p.batchYear})`;
+      if (p.id) return String(p.id).trim();
+    } else if (entityType === 'EXPENSE') {
+      if (p.expenseId) return String(p.expenseId).trim();
+      if (p.id) return String(p.id).trim();
+    } else if (entityType === 'USER' || entityType === 'ADMIN') {
+      if (p.userId) return String(p.userId).trim();
+      if (p.adminId) return String(p.adminId).trim();
+      if (p.id) return String(p.id).trim();
+    } else if (entityType === 'QURBANI_DAY') {
+      if (p.qurbaniDayId) return String(p.qurbaniDayId).trim();
+      if (p.dayId) return String(p.dayId).trim();
+      if (p.dayNumber) return `Day ${p.dayNumber}`;
+      if (p.id) return String(p.id).trim();
+    } else {
+      if (p.id) return String(p.id).trim();
+      if (p.entityId) return String(p.entityId).trim();
+    }
+  }
+
+  // 5. Fallback to audit event ID
+  const fallbackId = audit.auditId || audit.id;
+  if (fallbackId) return String(fallbackId).trim();
+
+  return '';
+}
+
+// Display format helper (avoids standalone '#')
+export function formatEntityDisplayId(rawId) {
+  if (!rawId) return '—';
+  const str = String(rawId).trim();
+  if (!str) return '—';
+
+  // If already starting with #
+  if (str.startsWith('#')) return str;
+
+  // Custom codes or prefixed IDs like QB-2026-000038, BUF-2025-01, EXP-001, Day 1
+  if (/^[A-Za-z]+[-_\s]/.test(str)) {
+    return str;
+  }
+
+  // Numeric ID
+  if (/^\d+$/.test(str)) {
+    return `#${str}`;
+  }
+
+  return str;
 }
 
 // Field labels metadata mapping
@@ -267,6 +387,9 @@ function AuditDetailModal({ audit, onClose }) {
     return all.filter((k) => JSON.stringify(oldPayload[k]) !== JSON.stringify(newPayload[k]));
   }, [isUpdate, oldPayload, newPayload]);
 
+  const rawEntityId = getEntityIdentifier(audit, oldPayload, newPayload);
+  const displayEntityId = formatEntityDisplayId(rawEntityId);
+
   return (
     <Modal
       title={`Audit Event #${id}`}
@@ -280,14 +403,15 @@ function AuditDetailModal({ audit, onClose }) {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eee8dc] pb-3 dark:border-[#1a3d31]">
             <div className="flex flex-wrap items-center gap-2">
               <span
-                className={`inline-flex items-center rounded-lg border px-2.5 py-1 text-xs font-bold ${getActionBadgeStyle(
+                className={`inline-flex items-center justify-center text-center rounded-lg border px-2.5 py-1 text-xs font-bold ${getActionBadgeStyle(
                   audit.action
                 )}`}
+                title={formatActionLabel(audit.action)}
               >
-                {audit.action}
+                {formatActionLabel(audit.action)}
               </span>
               <span
-                className={`inline-flex items-center rounded-lg border px-2.5 py-1 text-xs font-bold ${getEntityBadgeStyle(
+                className={`inline-flex items-center justify-center text-center rounded-lg border px-2.5 py-1 text-xs font-bold ${getEntityBadgeStyle(
                   audit.entityType
                 )}`}
               >
@@ -321,9 +445,12 @@ function AuditDetailModal({ audit, onClose }) {
               <p className="text-[11px] font-semibold text-[#7b867e] dark:text-[#8ba79b]">
                 {getEntityIdLabel(audit.entityType)}
               </p>
-              <p className="mt-1 flex items-center gap-1.5 font-mono font-bold text-[#183f35] dark:text-[#edf6f2]">
+              <p
+                title={rawEntityId ? `${getEntityIdLabel(audit.entityType)}: ${displayEntityId}` : undefined}
+                className="mt-1 flex items-center gap-1.5 font-mono font-bold text-[#183f35] dark:text-[#edf6f2]"
+              >
                 <Layers size={13} className="shrink-0 text-[#246b59] dark:text-[#4ade80]" />
-                <span>#{audit.entityId}</span>
+                <span className="truncate">{displayEntityId}</span>
               </p>
               <p className="mt-0.5 text-[10px] text-[#8a948e] dark:text-[#698d80]">
                 {getEntityLabel(audit.entityType)}
@@ -466,6 +593,22 @@ function AuditDetailModal({ audit, onClose }) {
 }
 
 export default function AuditLogs({ data }) {
+  // Responsive screen detection for search placeholder
+  const [windowWidth, setWindowWidth] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 1024
+  );
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const searchPlaceholder =
+    windowWidth < 360
+      ? 'Search ID, admin, action...'
+      : 'Search audit ID, admin, action...';
+
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [entityFilter, setEntityFilter] = useState('All');
@@ -557,8 +700,9 @@ export default function AuditLogs({ data }) {
     if (targetId) {
       try {
         const res = await getAuditLogById(targetId);
-        if (res?.data) {
-          setSelectedAudit(res.data);
+        const detailed = res?.data || res;
+        if (detailed && typeof detailed === 'object') {
+          setSelectedAudit((prev) => ({ ...prev, ...detailed }));
         }
       } catch (err) {
         console.warn(`Live GET /api/v1/audit-logs/${targetId} error, using list payload:`, err);
@@ -628,13 +772,22 @@ export default function AuditLogs({ data }) {
   // Compute admin dropdown options
   const adminOptions = useMemo(() => {
     const list = ['Admin: All'];
+    // Track name frequencies to disambiguate identical names if necessary
+    const nameCounts = {};
+    adminUsers.forEach((a) => {
+      const n = (a.fullName || a.name || '').trim();
+      if (n) nameCounts[n] = (nameCounts[n] || 0) + 1;
+    });
+
     adminUsers.forEach((a) => {
       const id = a.userId || a.id;
-      const name = a.fullName || a.name || `Admin #${id}`;
-      list.push(`Admin #${id}: ${name}`);
+      const baseName = (a.fullName || a.name || '').trim() || `Admin ${id}`;
+      const displayName = nameCounts[baseName] > 1 && a.email ? `${baseName} (${a.email})` : baseName;
+      list.push(`Admin: ${displayName}`);
     });
     return list;
   }, [adminUsers]);
+
   const selectedAdmin = adminUsers.find(
     (admin) => String(admin.userId || admin.id) === String(adminFilter)
   );
@@ -646,15 +799,21 @@ export default function AuditLogs({ data }) {
     return auditLogs.filter((item) => {
       const id = String(item.auditId || item.id || '').toLowerCase();
       const admin = String(item.adminName || item.admin || item.adminId || '').toLowerCase();
-      const action = String(item.action || '').toLowerCase();
-      const entity = String(item.entityType || '').toLowerCase();
+      const rawAction = String(item.action || '').toLowerCase();
+      const formattedAction = formatActionLabel(item.action).toLowerCase();
+      const rawEntity = String(item.entityType || '').toLowerCase();
+      const formattedEntity = getEntityLabel(item.entityType).toLowerCase();
       const entityId = String(item.entityId || '').toLowerCase();
+      const resolvedEntityId = String(getEntityIdentifier(item) || '').toLowerCase();
       return (
         id.includes(q) ||
         admin.includes(q) ||
-        action.includes(q) ||
-        entity.includes(q) ||
-        entityId.includes(q)
+        rawAction.includes(q) ||
+        formattedAction.includes(q) ||
+        rawEntity.includes(q) ||
+        formattedEntity.includes(q) ||
+        entityId.includes(q) ||
+        resolvedEntityId.includes(q)
       );
     });
   }, [auditLogs, searchQuery]);
@@ -677,7 +836,7 @@ export default function AuditLogs({ data }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageIntro
           eyebrow="Accountability & Compliance"
-          // title="Audit logs"
+          title="Audit logs"
           description="A durable, immutable security ledger of all administrative and operational activities across inventory, bookings, and expenses."
           icon={Activity}
         />
@@ -730,26 +889,28 @@ export default function AuditLogs({ data }) {
       </div>
 
       {/* Main Table Card */}
-      <section className="card-surface rounded-2xl p-5 sm:p-6">
+      <section className="card-surface relative overflow-hidden rounded-2xl p-5 sm:p-6">
         {/* Card Header & Status */}
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-5 flex flex-col gap-3 border-b border-[#eee8dc] pb-4 dark:border-[#1a3d31] sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <p className="kicker">Security Trail</p>
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                  isBackendConnected
-                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                    : 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
-                }`}
-              >
+              {import.meta.env.DEV && (
                 <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    isBackendConnected ? 'bg-emerald-500' : 'bg-amber-500'
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    isBackendConnected
+                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                      : 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
                   }`}
-                />
-                {isBackendConnected ? 'Live API (Endpoint #27)' : 'Local Storage'}
-              </span>
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      isBackendConnected ? 'bg-emerald-500' : 'bg-amber-500'
+                    }`}
+                  />
+                  {isBackendConnected ? 'Live' : 'Local Storage'}
+                </span>
+              )}
             </div>
             <h3 className="mt-1 font-display text-xl font-extrabold text-[#183f35] dark:text-[#edf6f2]">
               {totalElements} recorded events
@@ -761,17 +922,18 @@ export default function AuditLogs({ data }) {
         </div>
 
         {/* Filter Toolbar matching Bookings and AnimalInventory */}
-        <div className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="mb-6 flex flex-wrap items-center gap-3 max-w-full min-w-0">
           {/* Search Box */}
           <div className="relative w-full sm:w-80 md:w-88">
             <Search
               size={15}
-              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8a948e] dark:text-[#698d80]"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a948e] dark:text-[#698d80]"
             />
             <input
               type="text"
-              placeholder="Search audit ID, admin, action..."
-              className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-10 pr-8 text-xs font-medium !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"
+              placeholder={searchPlaceholder}
+              title={searchPlaceholder}
+              className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-9 pr-8 text-xs font-medium placeholder:text-[11px] sm:placeholder:text-xs placeholder:truncate truncate !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -788,29 +950,40 @@ export default function AuditLogs({ data }) {
 
           {/* Entity Type Dropdown */}
           <ProjectDropdown
-            value={entityFilter === 'All' ? 'Entity: All' : `Entity: ${entityFilter}`}
+            value={entityFilter === 'All' ? 'Entity: All' : `Entity: ${getEntityLabel(entityFilter)}`}
             onChange={(selected) => {
-              const clean = selected.replace('Entity: ', '');
-              setEntityFilter(clean);
+              const clean = selected.replace(/^Entity:\s*/, '').trim();
+              if (clean === 'All') {
+                setEntityFilter('All');
+              } else {
+                const match = entityOptions.find((e) => getEntityLabel(e) === clean || e === clean);
+                setEntityFilter(match || clean);
+              }
               setActionFilter('All');
               setCurrentPage(0);
             }}
-            options={entityOptions.map((e) => (e === 'All' ? 'Entity: All' : `Entity: ${e}`))}
+            options={entityOptions.map((e) => (e === 'All' ? 'Entity: All' : `Entity: ${getEntityLabel(e)}`))}
             icon={Filter}
             testId="dropdown-audit-entity"
           />
 
           {/* Action Dropdown */}
           <ProjectDropdown
-            value={actionFilter === 'All' ? 'Action: All' : `Action: ${actionFilter}`}
+            value={actionFilter === 'All' ? 'Action: All' : `Action: ${formatActionLabel(actionFilter)}`}
             onChange={(selected) => {
-              const clean = selected.replace('Action: ', '');
-              setActionFilter(clean);
+              const clean = selected.replace(/^Action:\s*/, '').trim();
+              if (clean === 'All') {
+                setActionFilter('All');
+              } else {
+                const match = actionOptions.find((a) => formatActionLabel(a) === clean || a === clean);
+                setActionFilter(match || clean);
+              }
               setCurrentPage(0);
             }}
-            options={actionOptions.map((a) => (a === 'All' ? 'Action: All' : `Action: ${a}`))}
+            options={actionOptions.map((a) => (a === 'All' ? 'Action: All' : `Action: ${formatActionLabel(a)}`))}
             icon={Database}
             testId="dropdown-audit-action"
+            menuClassName="min-w-0 sm:min-w-[340px]"
           />
 
           {/* Admin User Dropdown */}
@@ -819,22 +992,27 @@ export default function AuditLogs({ data }) {
               adminFilter === 'All'
                 ? 'Admin: All'
                 : selectedAdmin
-                ? `Admin #${selectedAdmin.userId || selectedAdmin.id}: ${selectedAdmin.fullName || selectedAdmin.name}`
+                ? `Admin: ${(selectedAdmin.fullName || selectedAdmin.name || '').trim() || `Admin ${selectedAdmin.userId || selectedAdmin.id}`}`
                 : 'Admin: All'
             }
             onChange={(selected) => {
               if (selected === 'All' || selected === 'Admin: All') {
                 setAdminFilter('All');
               } else {
-                const match = selected.match(/Admin #(\d+)/);
-                if (match) {
-                  setAdminFilter(match[1]);
-                } else {
-                  const admin = adminUsers.find(
-                    (item) => (item.fullName || item.name) === selected
+                const clean = selected.replace(/^Admin:\s*/i, '').trim();
+                const admin = adminUsers.find((item) => {
+                  const idStr = String(item.userId || item.id);
+                  const name = (item.fullName || item.name || '').trim();
+                  const fallback = `Admin ${idStr}`;
+                  const withEmail = item.email ? `${name} (${item.email})` : name;
+                  return (
+                    name.toLowerCase() === clean.toLowerCase() ||
+                    withEmail.toLowerCase() === clean.toLowerCase() ||
+                    fallback.toLowerCase() === clean.toLowerCase() ||
+                    idStr === clean
                   );
-                  setAdminFilter(admin ? String(admin.userId || admin.id) : 'All');
-                }
+                });
+                setAdminFilter(admin ? String(admin.userId || admin.id) : 'All');
               }
               setCurrentPage(0);
             }}
@@ -870,8 +1048,14 @@ export default function AuditLogs({ data }) {
             <tbody>
               {filteredLogs.map((audit) => {
                 const id = audit.auditId || audit.id;
+                const matchedAdmin = audit.adminId
+                  ? adminUsers.find((u) => String(u.userId || u.id) === String(audit.adminId))
+                  : null;
                 const adminName =
-                  audit.adminName || (audit.adminId ? `Admin #${audit.adminId}` : audit.admin || 'System');
+                  audit.adminName ||
+                  matchedAdmin?.fullName ||
+                  matchedAdmin?.name ||
+                  (audit.adminId ? `Admin #${audit.adminId}` : audit.admin || 'System');
                 const timestamp = audit.createdAt || audit.at;
 
                 return (
@@ -881,25 +1065,28 @@ export default function AuditLogs({ data }) {
                     className="border-t border-[#eee8dc] hover:bg-[#faf7f0]/60 dark:border-[#21473a] dark:hover:bg-[#122b22]/50 transition-colors"
                   >
                     {/* Admin */}
-                    <Td className="font-semibold text-[#183f35] dark:text-[#edf6f2]">
-                      {adminName}
+                    <Td className="max-w-[130px] sm:max-w-none font-semibold text-[#183f35] dark:text-[#edf6f2]">
+                      <span className="truncate block" title={adminName}>
+                        {adminName}
+                      </span>
                     </Td>
 
                     {/* Action */}
-                    <Td>
+                    <Td className="max-w-[170px] sm:max-w-none">
                       <span
-                        className={`inline-flex items-center rounded-lg border px-2.5 py-1 text-[11px] font-bold ${getActionBadgeStyle(
+                        className={`inline-flex max-w-[160px] sm:max-w-none items-center justify-center text-center rounded-lg border px-2.5 py-1 text-[11px] font-bold ${getActionBadgeStyle(
                           audit.action
                         )}`}
+                        title={formatActionLabel(audit.action)}
                       >
-                        {audit.action}
+                        <span className="truncate text-center">{formatActionLabel(audit.action)}</span>
                       </span>
                     </Td>
 
                     {/* Entity Type */}
                     <Td>
                       <span
-                        className={`inline-flex items-center rounded-lg border px-2 py-0.5 text-xs font-semibold ${getEntityBadgeStyle(
+                        className={`inline-flex items-center justify-center text-center rounded-lg border px-2 py-0.5 text-xs font-semibold ${getEntityBadgeStyle(
                           audit.entityType
                         )}`}
                       >
@@ -914,16 +1101,18 @@ export default function AuditLogs({ data }) {
 
                     {/* Actions / View Details */}
                     <Td className="text-right">
-                      <button
-                        type="button"
-                        data-testid={`button-audit-details-${id}`}
-                        onClick={() => handleInspectAudit(audit)}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold text-[#246b59] hover:bg-[#e4efe8] dark:text-[#4ade80] dark:hover:bg-[#16382b] transition"
-                        title="View complete audit details"
-                      >
-                        <Eye size={14} />
-                        <span>Details</span>
-                      </button>
+                      <div className="flex items-center justify-end">
+                        <button
+                          type="button"
+                          data-testid={`button-audit-details-${id}`}
+                          onClick={() => handleInspectAudit(audit)}
+                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold text-[#246b59] hover:bg-[#e4efe8] dark:text-[#4ade80] dark:hover:bg-[#16382b] transition"
+                          title="View complete audit details"
+                        >
+                          <Eye size={14} />
+                          <span>Details</span>
+                        </button>
+                      </div>
                     </Td>
                   </tr>
                 );

@@ -1,7 +1,19 @@
 import React from 'react';
 import { useTheme } from '../context/ThemeContext.jsx';
 
-export default function StatCard({ label, value, sub, icon: Icon, color, delay }) {
+function getValueFontSize(value) {
+  if (value === null || value === undefined) return 'text-xl sm:text-2xl';
+  const str = typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+  const len = str.length;
+
+  if (len > 16) return 'text-xs sm:text-sm';
+  if (len > 12) return 'text-sm sm:text-base xl:text-sm';
+  if (len > 9) return 'text-base sm:text-lg xl:text-base';
+  if (len > 6) return 'text-lg sm:text-xl xl:text-lg';
+  return 'text-xl sm:text-2xl xl:text-xl';
+}
+
+export default function StatCard({ label, value, sub, icon: Icon, color, delay, onClick }) {
   const { isDark } = useTheme();
 
   const lightColors = {
@@ -24,25 +36,47 @@ export default function StatCard({ label, value, sub, icon: Icon, color, delay }
   const testId = `text-stat-${label.toLowerCase().replaceAll(' ', '-')}`;
 
   return (
-    <div className={`card-surface fade-up delay-${Math.min(delay + 1, 3)} rounded-2xl p-5`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-semibold text-[#7b867e] dark:text-[#92b1a3]">{label}</p>
+    <div
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      className={`card-surface fade-up delay-${Math.min(delay + 1, 3)} min-w-0 overflow-hidden rounded-2xl p-5 ${
+        onClick ? 'cursor-pointer hover:border-[#246b59] hover:shadow-md transition-all active:scale-[0.99]' : ''
+      }`}
+    >
+      <div className="flex min-w-0 items-start justify-between gap-2.5">
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <p className="text-xs font-semibold text-[#7b867e] dark:text-[#92b1a3] truncate" title={label}>
+            {label}
+          </p>
           <p
             data-testid={testId}
-            className="mt-2 font-display text-3xl font-extrabold tracking-[-.045em] text-[#183f35] dark:text-[#edf6f2]"
+            title={typeof value === 'string' || typeof value === 'number' ? String(value) : undefined}
+            className={`mt-2 font-display font-extrabold tracking-[-.045em] text-[#183f35] dark:text-[#edf6f2] truncate break-words [overflow-wrap:anywhere] leading-tight ${getValueFontSize(
+              value
+            )}`}
           >
             {value}
           </p>
         </div>
         <div
-          className="grid h-10 w-10 place-items-center rounded-xl transition-colors duration-200"
-          style={{ background: colors[color][0], color: colors[color][1] }}
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl transition-colors duration-200"
+          style={{ background: colors[color]?.[0] || colors.green[0], color: colors[color]?.[1] || colors.green[1] }}
         >
           <Icon size={19} />
         </div>
       </div>
-      <p className="mt-4 text-xs text-[#7b867e] dark:text-[#8ba79b]">{sub}</p>
+      <p className="mt-4 text-xs text-[#7b867e] dark:text-[#8ba79b] break-words leading-relaxed">{sub}</p>
     </div>
   );
 }

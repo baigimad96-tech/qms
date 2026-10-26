@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Box,
@@ -33,6 +33,39 @@ export function BrandMark({ light = false }) {
 export default function Sidebar({ path, mobileNav, setMobileNav, navigate, logout }) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
+  // Lock body scroll and handle Escape / resize when mobileNav is open
+  useEffect(() => {
+    if (!mobileNav) return;
+
+    const originalOverflow = document.body.style.overflow;
+    const originalTouchAction = document.body.style.touchAction;
+
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setMobileNav(false);
+      }
+    };
+
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setMobileNav(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.touchAction = originalTouchAction;
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [mobileNav, setMobileNav]);
+
   const handleLogout = async () => {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
@@ -64,17 +97,17 @@ export default function Sidebar({ path, mobileNav, setMobileNav, navigate, logou
   return (
     <>
       <aside
-        className={`sidebar-shell fixed inset-y-0 left-0 z-40 flex w-[272px] -translate-x-full flex-col border-r border-[#31584d] transition-transform duration-300 md:sticky md:top-0 md:h-screen md:shrink-0 md:translate-x-0 overflow-y-auto ${
+        className={`sidebar-shell fixed inset-y-0 top-0 bottom-0 left-0 z-40 flex h-full h-screen h-[100dvh] max-h-screen max-h-[100dvh] w-[272px] -translate-x-full flex-col border-r border-[#31584d] transition-transform duration-300 ease-in-out md:sticky md:top-0 md:h-screen md:h-[100dvh] md:shrink-0 md:translate-x-0 overflow-hidden ${
           mobileNav ? 'translate-x-0' : ''
         }`}
       >
-        <div className="flex h-[84px] items-center border-b border-[#31584d] px-7">
+        <div className="flex h-[84px] shrink-0 items-center border-b border-[#31584d] px-7">
           <BrandMark light />
         </div>
-        <div className="px-5 pb-3 pt-7 text-[10px] font-bold uppercase tracking-[.2em] text-[#88aa9d]">
+        <div className="shrink-0 px-5 pb-3 pt-6 text-[10px] font-bold uppercase tracking-[.2em] text-[#88aa9d]">
           Workspace
         </div>
-        <nav className="flex-1 space-y-1 px-3">
+        <nav className="sidebar-nav-scroll flex-1 min-h-0 space-y-1 overflow-y-auto px-3">
           {nav.map((item) => {
             const Icon = item.icon;
             const active = current?.href === item.href;
@@ -83,7 +116,10 @@ export default function Sidebar({ path, mobileNav, setMobileNav, navigate, logou
               <button
                 data-testid={testId}
                 key={item.href}
-                onClick={() => navigate(item.href)}
+                onClick={() => {
+                  navigate(item.href);
+                  setMobileNav(false);
+                }}
                 className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold transition ${
                   active
                     ? 'bg-[#e3a84b] text-[#183f35] shadow-lg shadow-[#102f29]/25'
@@ -97,7 +133,7 @@ export default function Sidebar({ path, mobileNav, setMobileNav, navigate, logou
             );
           })}
         </nav>
-        <div className="border-t border-[#31584d] p-4">
+        <div className="shrink-0 mt-auto border-t border-[#31584d] p-4">
           <button
             data-testid="button-logout"
             onClick={handleLogout}
@@ -120,9 +156,11 @@ export default function Sidebar({ path, mobileNav, setMobileNav, navigate, logou
       </aside>
       {mobileNav && (
         <button
+          type="button"
           aria-label="Close navigation"
-          className="modal-backdrop fixed inset-0 z-30 md:hidden"
+          className="modal-backdrop fixed inset-0 z-30 md:hidden touch-none"
           onClick={() => setMobileNav(false)}
+          onTouchMove={(e) => e.preventDefault()}
         />
       )}
     </>

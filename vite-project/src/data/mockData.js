@@ -15,7 +15,135 @@ export function formatMoney(value) {
 }
 
 export function formatNumber(value) {
-  return new Intl.NumberFormat('en-IN').format(Number(value || 0));
+  if (value === undefined || value === null || value === '') return '0';
+  if (typeof value === 'bigint') {
+    return new Intl.NumberFormat('en-IN').format(value);
+  }
+  const str = String(value).trim();
+  if (/^\d+$/.test(str)) {
+    try {
+      return new Intl.NumberFormat('en-IN').format(BigInt(str));
+    } catch {}
+  }
+  const n = Number(value);
+  if (isNaN(n)) return '0';
+  return new Intl.NumberFormat('en-IN').format(n);
+}
+
+export function formatCompactNumber(value) {
+  if (value === undefined || value === null || value === '') return '0';
+  const str = typeof value === 'bigint' ? value.toString() : String(value).trim();
+  if (!str || str === '0') return '0';
+
+  if (/[eE]/.test(str)) {
+    const n = Number(str);
+    return isNaN(n) ? '0' : n.toExponential(2);
+  }
+
+  if (/^\d+$/.test(str)) {
+    try {
+      const bi = BigInt(str);
+      if (bi < 10000000n) {
+        return new Intl.NumberFormat('en-IN').format(bi);
+      }
+      const num = Number(bi);
+      if (num > 1e16) {
+        return num.toExponential(2);
+      }
+      return new Intl.NumberFormat('en-IN', {
+        notation: 'compact',
+        compactDisplay: 'short',
+        maximumFractionDigits: 2,
+      }).format(num);
+    } catch {}
+  }
+
+  const num = Number(str);
+  if (isNaN(num)) return '0';
+  if (num > 1e16) return num.toExponential(2);
+  if (num >= 1e7) {
+    return new Intl.NumberFormat('en-IN', {
+      notation: 'compact',
+      compactDisplay: 'short',
+      maximumFractionDigits: 2,
+    }).format(num);
+  }
+  return new Intl.NumberFormat('en-IN').format(num);
+}
+
+export function formatHissaValue(val) {
+  if (val === undefined || val === null || val === '') {
+    return { display: '0', full: '0', isCompact: false, fontSize: 'text-2xl' };
+  }
+
+  const str = typeof val === 'bigint' ? val.toString() : String(val).trim();
+  if (!str || str === '0') {
+    return { display: '0', full: '0', isCompact: false, fontSize: 'text-2xl' };
+  }
+
+  // Exponential notation input
+  if (/[eE]/.test(str)) {
+    const n = Number(str);
+    if (isNaN(n) || !Number.isFinite(n)) {
+      return { display: '—', full: 'Invalid number', isCompact: false, fontSize: 'text-2xl' };
+    }
+    const exp = n.toExponential(2);
+    return { display: exp, full: str, isCompact: true, fontSize: 'text-lg sm:text-xl' };
+  }
+
+  // Integer digit strings (supporting BigInt for massive inputs)
+  if (/^\d+$/.test(str)) {
+    try {
+      const bi = BigInt(str);
+      const fullStr = new Intl.NumberFormat('en-IN').format(bi);
+
+      // Standard range: <= 1 Crore (up to 7 digits)
+      if (bi < 10000000n) {
+        const fontSize = fullStr.length > 8 ? 'text-xl sm:text-2xl' : 'text-2xl';
+        return { display: fullStr, full: fullStr, isCompact: false, fontSize };
+      }
+
+      // Medium-large: 1 Crore to 1,000 Crore (up to 11 digits)
+      if (str.length <= 11) {
+        return { display: fullStr, full: fullStr, isCompact: false, fontSize: 'text-lg sm:text-xl' };
+      }
+
+      // Massive inputs (> 11 digits): use compact notation with full formatted tooltip
+      const num = Number(bi);
+      let compact;
+      if (num > 1e16) {
+        compact = num.toExponential(2);
+      } else {
+        compact = new Intl.NumberFormat('en-IN', {
+          notation: 'compact',
+          compactDisplay: 'short',
+          maximumFractionDigits: 2,
+        }).format(num);
+      }
+      return { display: compact, full: fullStr, isCompact: true, fontSize: 'text-lg sm:text-xl' };
+    } catch {}
+  }
+
+  const num = Number(str);
+  if (isNaN(num) || !Number.isFinite(num)) {
+    return { display: '—', full: 'Invalid number', isCompact: false, fontSize: 'text-2xl' };
+  }
+
+  const fullStr = new Intl.NumberFormat('en-IN').format(num);
+  if (num > 1e16) {
+    return { display: num.toExponential(2), full: fullStr, isCompact: true, fontSize: 'text-lg sm:text-xl' };
+  }
+  if (num >= 1e11) {
+    const compact = new Intl.NumberFormat('en-IN', {
+      notation: 'compact',
+      compactDisplay: 'short',
+      maximumFractionDigits: 2,
+    }).format(num);
+    return { display: compact, full: fullStr, isCompact: true, fontSize: 'text-lg sm:text-xl' };
+  }
+
+  const fontSize = fullStr.length > 10 ? 'text-lg sm:text-xl' : 'text-2xl';
+  return { display: fullStr, full: fullStr, isCompact: false, fontSize };
 }
 
 export function formatDateTime(value) {
@@ -41,7 +169,10 @@ export function generateId(prefix, list) {
 }
 
 export function seedData() {
+  const currentYear = new Date().getFullYear();
   const inventory = [
+    { id: `BUF-${currentYear}-01`, animal: 'Buffalo', batchYear: currentYear, totalAnimals: 8, totalHissa: 56, bookedHissa: 20, totalPrice: 900000 },
+    { id: `BUF-${currentYear}-02`, animal: 'Buffalo', batchYear: currentYear, totalAnimals: 10, totalHissa: 70, bookedHissa: 25, totalPrice: 1125000 },
     { id: 'BUF-2025-01', animal: 'Buffalo', batchYear: 2025, totalAnimals: 8, totalHissa: 56, bookedHissa: 20, totalPrice: 900000 },
     { id: 'BUF-2025-02', animal: 'Buffalo', batchYear: 2025, totalAnimals: 10, totalHissa: 70, bookedHissa: 60, totalPrice: 1125000 },
     { id: 'BUF-2024-01', animal: 'Buffalo', batchYear: 2024, totalAnimals: 12, totalHissa: 84, bookedHissa: 93, totalPrice: 1320000 },
