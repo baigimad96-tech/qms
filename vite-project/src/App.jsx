@@ -20,11 +20,16 @@ import ExpenseTracker from './pages/ExpenseTracker.jsx';
 import { loadInitialData, persistData } from './data/mockData.js';
 import { getAccessToken, clearAuth } from './utils/auth.js';
 import { logoutUser } from './services/authApi.js';
+import { useScrollRestoration, saveCurrentScroll } from './utils/useScrollRestoration.js';
 
 function Toast({ message, type, onClose }) {
   return (
-    <div className="toast-in fixed bottom-5 right-5 z-[70] flex max-w-sm items-start gap-3 rounded-xl border border-[#31584d] bg-[#183f35] px-4 py-3 text-sm text-[#f8f3e7] shadow-xl">
-      <div className={`mt-0.5 ${type === 'error' ? 'text-[#f3a69b]' : type === 'info' ? 'text-[#e6b65b]' : 'text-[#a9dfb6]'}`}>
+    <div
+      role="status"
+      aria-live="polite"
+      className="toast-in fixed bottom-5 left-4 right-4 z-[70] mx-auto flex w-fit max-w-[calc(100vw-32px)] items-start gap-3 rounded-xl border border-[#31584d] bg-[#183f35] px-4 py-3 text-sm text-[#f8f3e7] shadow-xl sm:left-auto sm:right-5 sm:mx-0 sm:w-auto sm:max-w-sm"
+    >
+      <div className={`mt-0.5 shrink-0 ${type === 'error' ? 'text-[#f3a69b]' : type === 'info' ? 'text-[#e6b65b]' : 'text-[#a9dfb6]'}`}>
         {type === 'error' ? (
           <AlertTriangle size={17} />
         ) : type === 'info' ? (
@@ -33,8 +38,13 @@ function Toast({ message, type, onClose }) {
           <CircleCheck size={17} />
         )}
       </div>
-      <span className="leading-5">{message}</span>
-      <button aria-label="Close notification" onClick={onClose} className="ml-2 text-[#b9cec3] hover:text-white">
+      <span className="min-w-0 flex-1 leading-5 break-words">{message}</span>
+      <button
+        type="button"
+        aria-label="Close notification"
+        onClick={onClose}
+        className="ml-2 shrink-0 text-[#b9cec3] transition-colors hover:text-white"
+      >
         <X size={15} />
       </button>
     </div>
@@ -64,6 +74,8 @@ function AppContent() {
   const [toast, setToast] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
 
+  useScrollRestoration();
+
   useEffect(() => {
     persistData(data);
   }, [data]);
@@ -75,10 +87,10 @@ function AppContent() {
     }
   }, [toast]);
 
-  const navigate = (path) => {
-    navigateBase(path);
+  const navigate = (path, state) => {
+    saveCurrentScroll(locationObj.key, locationObj.pathname);
     setMobileNav(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    navigateBase(path, state);
   };
 
   const notify = (message, type = 'success') => setToast({ message, type });
@@ -102,25 +114,41 @@ function AppContent() {
 
   if (!loggedIn || isAuthRoute) {
     if (loggedIn && isAuthRoute) {
-      return <Navigate to="/dashboard" replace />;
+      return (
+        <>
+          <Navigate to="/dashboard" replace />
+          {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+        </>
+      );
     }
     if (!loggedIn && !isAuthRoute) {
-      return <Navigate to="/login" replace />;
-    }
-    if (location === '/forgot-password') {
-      return <ForgotPassword navigate={navigate} notify={notify} />;
-    }
-    if (location === '/reset-password') {
-      return <ResetPassword navigate={navigate} notify={notify} />;
+      return (
+        <>
+          <Navigate to="/login" replace />
+          {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+        </>
+      );
     }
     return (
-      <Login
-        navigate={navigate}
-        onSuccess={() => {
-          setLoggedIn(true);
-          navigate('/dashboard');
-        }}
-      />
+      <>
+        {location === '/forgot-password' && (
+          <ForgotPassword navigate={navigate} notify={notify} />
+        )}
+        {location === '/reset-password' && (
+          <ResetPassword navigate={navigate} notify={notify} />
+        )}
+        {location !== '/forgot-password' && location !== '/reset-password' && (
+          <Login
+            navigate={navigate}
+            notify={notify}
+            onSuccess={() => {
+              setLoggedIn(true);
+              navigate('/dashboard');
+            }}
+          />
+        )}
+        {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+      </>
     );
   }
 
@@ -157,7 +185,7 @@ function AppContent() {
               <Route path="/inventory" element={<AnimalInventory data={data} patchData={patchData} notify={notify} />} />
               <Route path="/animals" element={<Navigate to="/inventory" replace />} />
               <Route path="/qurbani-days" element={<QurbaniDays data={data} patchData={patchData} notify={notify} />} />
-              <Route path="/new-booking" element={<HissaBooking data={data} patchData={patchData} notify={notify} navigate={navigate} />} />
+              <Route path="/new-booking" element={<HissaBooking key={locationObj.key} data={data} patchData={patchData} notify={notify} navigate={navigate} />} />
               <Route path="/hissa-booking" element={<Navigate to="/new-booking" replace />} />
               <Route path="/bookings" element={<Bookings data={data} patchData={patchData} notify={notify} navigate={navigate} />} />
               <Route path="/bookings/:id" element={<Bookings data={data} patchData={patchData} notify={notify} navigate={navigate} selectedId={location.split('/')[2]} />} />

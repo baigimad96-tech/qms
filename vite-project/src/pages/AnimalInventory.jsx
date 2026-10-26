@@ -11,15 +11,56 @@ import {
   ChevronDown,
   Check,
   Calendar,
+  Layers,
   X,
 } from 'lucide-react';
 import { PageIntro } from './Dashboard.jsx';
 import Modal, { ModalActions, Field } from '../components/Modal.jsx';
 import { TableScroll, Td, IconButton } from '../components/Table.jsx';
-import { formatNumber, formatMoney } from '../data/mockData.js';
+import { formatNumber, formatMoney, formatCompactNumber, formatHissaValue } from '../data/mockData.js';
 import { api } from '../services/api.js';
 import ProjectDropdown from '../components/ProjectDropdown.jsx';
 import { getActiveSeasonYear } from '../utils/season.js';
+
+// Numerical boundaries and character constraints for animals & financial amounts
+export const MAX_STOCK_COST = 100000000; // ₹10,00,00,000 (10 Crore max per addition/batch)
+export const MAX_STOCK_QTY = 10000; // 10,000 animals max per addition/batch
+export const MAX_COST_DIGITS = 9; // up to 9 whole-rupee digits (999,999,999)
+export const MAX_QTY_DIGITS = 5; // up to 5 digits (99,999)
+
+// Safe precision calculation helpers for Hissa allocations
+export const calculateTotalHissa = (animals) => {
+  const str = String(animals || '').trim();
+  if (!str) return 0;
+  if (/^\d+$/.test(str)) {
+    try {
+      return BigInt(str) * 7n;
+    } catch {}
+  }
+  const n = Number(str);
+  return isNaN(n) ? 0 : n * 7;
+};
+
+export const calculateAvailableHissa = (totalHissa, booked) => {
+  const bookedCount = Number(booked || 0);
+  if (typeof totalHissa === 'bigint') {
+    const bookedBi = BigInt(bookedCount);
+    const diff = totalHissa - bookedBi;
+    return diff > 0n ? diff : 0n;
+  }
+  const total = Number(totalHissa || 0);
+  return Math.max(total - bookedCount, 0);
+};
+
+// Helper to determine allowed batch year range (strictly current operating season or immediate next year)
+export const getBatchYearRange = (activeSeasonYear = getActiveSeasonYear()) => {
+  const activeYear = Number(activeSeasonYear) || new Date().getFullYear();
+  return {
+    min: activeYear,
+    max: activeYear + 1,
+    active: activeYear,
+  };
+};
 
 // Helper function to extract error message from API response
 export function getErrorMessage(err, fallback = 'An unexpected error occurred.') {
@@ -30,6 +71,14 @@ export function getErrorMessage(err, fallback = 'An unexpected error occurred.')
   const resData = err.response.data;
 
   if (status === 400) {
+    // 0. Gracefully translate technical payload serialization / malformed input errors
+    if (
+      typeof resData?.message === 'string' &&
+      /malformed|invalid json|unparseable|deserializ|overflow|out of range|numberformatexception/i.test(resData.message)
+    ) {
+      return 'Invalid input format or numeric value exceeded acceptable limits. Please check your inputs.';
+    }
+
     // 1. Check if resData.data is an object containing field error messages
     // e.g. { "totalAnimals": "Total animals count must be greater than zero" }
     if (resData?.data && typeof resData.data === 'object' && !Array.isArray(resData.data)) {
@@ -75,6 +124,24 @@ export function getErrorMessage(err, fallback = 'An unexpected error occurred.')
       resData?.error ||
       'Duplicate animal inventory for this animal type and batch year already exists.'
     );
+  }
+
+  if (status >= 500) {
+    const rawMsg = resData?.message || resData?.error || '';
+    if (
+      typeof rawMsg === 'string' &&
+      /overflow|out of range|numberformatexception|conversion|cannot deserialize|numeric/i.test(rawMsg)
+    ) {
+      return 'A numeric value entered exceeds acceptable limits. Please verify that all input values are within valid limits and try again.';
+    }
+    if (
+      !rawMsg ||
+      rawMsg.toLowerCase().includes('internal server error') ||
+      rawMsg.toLowerCase().includes('unexpected')
+    ) {
+      return 'The server could not process the request. Please verify that all input values are within valid limits and try again.';
+    }
+    return rawMsg;
   }
 
   return resData?.message || resData?.error || fallback;
@@ -147,19 +214,19 @@ export function InventoryTable({ items, isLoading, onEdit, onView, onAddStock, o
                     </span>
                   </Td>
                   <Td className="font-semibold">{item.batchYear}</Td>
-                  <Td>{formatNumber(item.totalAnimals)}</Td>
-                  <Td className="font-bold text-[#183f35] dark:text-[#edf6f2]">{formatNumber(item.totalHissa)}</Td>
-                  <Td>
+                  <Td title={String(item.totalAnimals)} className="max-w-[120px] truncate">{formatNumber(item.totalAnimals)}</Td>
+                  <Td title={String(item.totalHissa)} className="max-w-[120px] truncate font-bold text-[#183f35] dark:text-[#edf6f2]">{formatNumber(item.totalHissa)}</Td>
+                  <Td title={String(item.bookedHissa || 0)} className="max-w-[120px] truncate">
                     <span className={item.bookedHissa > 0 ? 'font-semibold text-[#9b6b1e] dark:text-[#f3c46a]' : ''}>
                       {formatNumber(item.bookedHissa || 0)}
                     </span>
                   </Td>
-                  <Td>
+                  <Td title={String(available)} className="max-w-[120px] truncate">
                     <span className={`font-bold ${available > 0 ? 'text-[#246b59] dark:text-[#4ade80]' : 'text-[#a63f32] dark:text-[#fca5a5]'}`}>
                       {formatNumber(available)}
                     </span>
                   </Td>
-                  <Td className="font-mono font-medium">{formatMoney(item.totalPrice)}</Td>
+                  <Td title={formatMoney(item.totalPrice)} className="max-w-[160px] truncate font-mono font-medium">{formatMoney(item.totalPrice)}</Td>
                   <Td>
                     <div className="flex gap-1 items-center">
                       <IconButton label="View inventory" icon={Eye} onClick={() => onView(item)} />
@@ -190,6 +257,8 @@ export function AddStockModal({ item, onClose, onSave, onEditBatch, apiError, is
     quantity: '',
     price: '',
   });
+  const [costError, setCostError] = useState('');
+  const [qtyError, setQtyError] = useState('');
 
   const qty = Number(form.quantity || 0);
   const addPrice = Number(form.price || 0);
@@ -197,10 +266,257 @@ export function AddStockModal({ item, onClose, onSave, onEditBatch, apiError, is
   const currentPrice = Number(item?.totalPrice || 0);
   const currentHissa = Number(item?.totalHissa || currentTotal * 7);
 
-  const additionalHissa = qty * 7;
-  const newTotalAnimals = currentTotal + qty;
-  const newTotalHissa = currentHissa + additionalHissa;
+  const additionalHissa = calculateTotalHissa(form.quantity);
+  const newTotalAnimals = typeof additionalHissa === 'bigint'
+    ? BigInt(currentTotal) + BigInt(form.quantity || 0)
+    : currentTotal + qty;
+  const newTotalHissa = typeof additionalHissa === 'bigint'
+    ? BigInt(currentHissa) + additionalHissa
+    : currentHissa + (qty * 7);
   const newTotalPrice = currentPrice + addPrice;
+
+  const newAnimalsFormatted = formatHissaValue(newTotalAnimals);
+  const newHissaFormatted = formatHissaValue(newTotalHissa);
+  const addQtyFormatted = formatHissaValue(form.quantity);
+  const addHissaFormatted = formatHissaValue(additionalHissa);
+
+  const handleQuantityKeyDown = (e) => {
+    if (
+      e.key === 'Backspace' ||
+      e.key === 'Delete' ||
+      e.key === 'Tab' ||
+      e.key === 'ArrowLeft' ||
+      e.key === 'ArrowRight' ||
+      e.key === 'ArrowUp' ||
+      e.key === 'ArrowDown' ||
+      e.key === 'Home' ||
+      e.key === 'End' ||
+      e.key === 'Enter' ||
+      e.key === 'Escape' ||
+      e.ctrlKey ||
+      e.metaKey
+    ) {
+      return;
+    }
+    // Only integers: disallow 'e', 'E', '+', '-', '.'
+    if (['e', 'E', '+', '-', '.'].includes(e.key) || !/^\d$/.test(e.key)) {
+      e.preventDefault();
+      setQtyError('Scientific notation, decimals, and signs are not allowed.');
+      return;
+    }
+    const input = e.target;
+    const hasSelection =
+      input &&
+      typeof input.selectionStart === 'number' &&
+      typeof input.selectionEnd === 'number' &&
+      input.selectionStart !== input.selectionEnd;
+    if (!hasSelection && String(form.quantity || '').length >= MAX_QTY_DIGITS) {
+      e.preventDefault();
+      setQtyError(`Quantity cannot exceed ${formatNumber(MAX_STOCK_QTY)} animals (max ${MAX_QTY_DIGITS} digits).`);
+    }
+  };
+
+  const handleQuantityPaste = (e) => {
+    const pasted = e.clipboardData?.getData('text') || '';
+    if (/[eE+.\-]/.test(pasted)) {
+      e.preventDefault();
+      setQtyError('Scientific notation, decimals, and signs are not allowed.');
+      return;
+    }
+    const clean = pasted.replace(/\D/g, '').slice(0, MAX_QTY_DIGITS);
+    if (!clean) return;
+    e.preventDefault();
+    setForm((f) => ({ ...f, quantity: clean }));
+    const num = Number(clean);
+    if (num > MAX_STOCK_QTY) {
+      setQtyError(`Quantity cannot exceed ${formatNumber(MAX_STOCK_QTY)} animals (max ${MAX_QTY_DIGITS} digits).`);
+    } else {
+      setQtyError('');
+    }
+  };
+
+  const handleQuantityChange = (e) => {
+    if (e.target.validity?.badInput) {
+      setQtyError('Please enter a valid whole number of animals.');
+      return;
+    }
+
+    let val = e.target.value;
+
+    if (val === '') {
+      setQtyError('');
+      setForm((f) => ({ ...f, quantity: '' }));
+      return;
+    }
+
+    if (val.includes('.') || val.includes('e') || val.includes('E') || val.includes('+') || val.includes('-')) {
+      setQtyError('Scientific notation, decimals, and signs are not allowed.');
+      val = val.replace(/\D/g, '');
+    }
+
+    if (val.length > MAX_QTY_DIGITS) {
+      val = val.slice(0, MAX_QTY_DIGITS);
+    }
+
+    const num = Number(val);
+    if (isNaN(num) || !Number.isFinite(num) || num < 1) {
+      setQtyError('Quantity must be at least 1 animal.');
+    } else if (num > MAX_STOCK_QTY) {
+      setQtyError(`Quantity cannot exceed ${formatNumber(MAX_STOCK_QTY)} animals (max ${MAX_QTY_DIGITS} digits).`);
+    } else {
+      setQtyError('');
+    }
+
+    setForm((f) => ({ ...f, quantity: val }));
+  };
+
+  const handleCostKeyDown = (e) => {
+    if (
+      e.key === 'Backspace' ||
+      e.key === 'Delete' ||
+      e.key === 'Tab' ||
+      e.key === 'ArrowLeft' ||
+      e.key === 'ArrowRight' ||
+      e.key === 'ArrowUp' ||
+      e.key === 'ArrowDown' ||
+      e.key === 'Home' ||
+      e.key === 'End' ||
+      e.key === 'Enter' ||
+      e.key === 'Escape' ||
+      e.ctrlKey ||
+      e.metaKey
+    ) {
+      return;
+    }
+    // Currency formatting: disallow scientific notation, plus, and minus
+    if (['e', 'E', '+', '-'].includes(e.key) || (!/^\d$/.test(e.key) && e.key !== '.')) {
+      e.preventDefault();
+      setCostError('Only numbers and a decimal point are allowed.');
+      return;
+    }
+    if (e.key === '.' && String(form.price || '').includes('.')) {
+      e.preventDefault();
+      setCostError('Only one decimal point is allowed.');
+      return;
+    }
+    // Restrict typing more digits if whole number portion already has max allowed digits
+    const input = e.target;
+    const hasSelection =
+      input &&
+      typeof input.selectionStart === 'number' &&
+      typeof input.selectionEnd === 'number' &&
+      input.selectionStart !== input.selectionEnd;
+    if (!hasSelection) {
+      const currentVal = String(form.price || '');
+      const parts = currentVal.split('.');
+      const dotIndex = currentVal.indexOf('.');
+      const cursor = input?.selectionStart ?? currentVal.length;
+      if (/^\d$/.test(e.key) && (dotIndex === -1 || cursor <= dotIndex) && parts[0].length >= MAX_COST_DIGITS) {
+        e.preventDefault();
+        setCostError(`Additional cost cannot exceed ${formatMoney(MAX_STOCK_COST)} (10 Crore, max ${MAX_COST_DIGITS} digits).`);
+      }
+    }
+  };
+
+  const handleCostPaste = (e) => {
+    const pasted = e.clipboardData?.getData('text') || '';
+    if (/[eE+\-]/.test(pasted)) {
+      e.preventDefault();
+      setCostError('Scientific notation, signs, and exponential numbers are not allowed.');
+      return;
+    }
+    let cleaned = pasted.replace(/[^\d.]/g, '');
+    if (!cleaned) return;
+    if (cleaned.includes('.')) {
+      const [whole, decimal] = cleaned.split('.');
+      cleaned = `${whole.slice(0, MAX_COST_DIGITS)}.${(decimal || '').slice(0, 2)}`;
+    } else if (cleaned.length > MAX_COST_DIGITS) {
+      cleaned = cleaned.slice(0, MAX_COST_DIGITS);
+    }
+    e.preventDefault();
+    setForm((f) => ({ ...f, price: cleaned }));
+    const num = Number(cleaned);
+    if (num > MAX_STOCK_COST) {
+      setCostError(`Additional cost cannot exceed ${formatMoney(MAX_STOCK_COST)} (10 Crore, max ${MAX_COST_DIGITS} digits).`);
+    } else {
+      setCostError('');
+    }
+  };
+
+  const handleCostChange = (e) => {
+    if (e.target.validity?.badInput) {
+      setCostError('Please enter a valid numeric cost without exponential or special characters.');
+      return;
+    }
+
+    let val = e.target.value;
+
+    if (val === '') {
+      setCostError('');
+      setForm((f) => ({ ...f, price: '' }));
+      return;
+    }
+
+    if (val.includes('-')) {
+      setCostError('Additional cost must be zero or positive.');
+      val = val.replace(/-/g, '');
+    }
+
+    if (val.includes('e') || val.includes('E') || val.includes('+')) {
+      setCostError('Scientific notation and signs are not allowed.');
+      val = val.replace(/[eE+]/g, '');
+    }
+
+    // Currency formatting: restrict to at most 2 decimal places
+    if (val.includes('.')) {
+      const [whole, decimal] = val.split('.');
+      val = `${whole.slice(0, MAX_COST_DIGITS)}.${(decimal || '').slice(0, 2)}`;
+    } else if (val.length > MAX_COST_DIGITS) {
+      val = val.slice(0, MAX_COST_DIGITS);
+    }
+
+    const num = Number(val);
+    const rawWhole = val.split('.')[0];
+    if (isNaN(num) || !Number.isFinite(num)) {
+      setCostError('Please enter a valid numeric cost.');
+    } else if (num < 0) {
+      setCostError('Additional cost must be zero or positive.');
+    } else if (num > MAX_STOCK_COST || rawWhole.length > MAX_COST_DIGITS) {
+      setCostError(`Additional cost cannot exceed ${formatMoney(MAX_STOCK_COST)} (10 Crore, max ${MAX_COST_DIGITS} digits).`);
+    } else {
+      setCostError('');
+    }
+
+    setForm((f) => ({ ...f, price: val }));
+  };
+
+  const numQty = Number(form.quantity);
+  const numPrice = Number(form.price);
+  const qtyStr = String(form.quantity || '').trim();
+  const priceStr = String(form.price || '').trim();
+
+  const isQtyValid =
+    qtyStr !== '' &&
+    !qtyError &&
+    !/[eE+.\-]/.test(qtyStr) &&
+    !isNaN(numQty) &&
+    Number.isFinite(numQty) &&
+    Number.isInteger(numQty) &&
+    numQty >= 1 &&
+    numQty <= MAX_STOCK_QTY &&
+    qtyStr.length <= MAX_QTY_DIGITS;
+
+  const isCostValid =
+    priceStr !== '' &&
+    !costError &&
+    !/[eE+\-]/.test(priceStr) &&
+    !isNaN(numPrice) &&
+    Number.isFinite(numPrice) &&
+    numPrice >= 0 &&
+    numPrice <= MAX_STOCK_COST &&
+    priceStr.split('.')[0].length <= MAX_COST_DIGITS;
+
+  const isFormValid = isQtyValid && isCostValid;
 
   return (
     <Modal
@@ -211,6 +527,7 @@ export function AddStockModal({ item, onClose, onSave, onEditBatch, apiError, is
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          if (!isFormValid) return;
           onSave(form, item);
         }}
       >
@@ -221,11 +538,11 @@ export function AddStockModal({ item, onClose, onSave, onEditBatch, apiError, is
         )}
 
         {/* Current status summary banner */}
-        <div className="mb-4 flex items-center justify-between rounded-xl border border-[#ded7c8] bg-[#faf7f0] p-3.5 text-xs text-[#526359] dark:border-[#21473a] dark:bg-[#122b22] dark:text-[#b4cbbe]">
-          <div>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#ded7c8] bg-[#faf7f0] p-3.5 text-xs text-[#526359] dark:border-[#21473a] dark:bg-[#122b22] dark:text-[#b4cbbe]">
+          <div className="min-w-0">
             <span className="font-bold text-[#183f35] dark:text-[#edf6f2]">{item.animalType || 'Animal'}</span> ({item.batchYear})
           </div>
-          <div>
+          <div className="min-w-0 break-words [overflow-wrap:anywhere]">
             Current: <strong className="text-[#183f35] dark:text-[#edf6f2]">{formatNumber(currentTotal)} animals</strong> · {formatMoney(currentPrice)}
           </div>
         </div>
@@ -234,60 +551,110 @@ export function AddStockModal({ item, onClose, onSave, onEditBatch, apiError, is
           <Field label="Additional Quantity (Animals)">
             <input
               data-testid="input-add-stock-quantity"
-              className="input"
+              className={`input ${qtyError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
               type="number"
               min="1"
+              max={MAX_STOCK_QTY}
+              maxLength={MAX_QTY_DIGITS}
               value={form.quantity}
-              onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
+              onChange={handleQuantityChange}
+              onKeyDown={handleQuantityKeyDown}
+              onPaste={handleQuantityPaste}
               placeholder="e.g. 5"
               disabled={isSaving}
               required
               autoFocus
             />
+            {qtyError && (
+              <p data-testid="error-add-stock-quantity" className="mt-1 text-xs font-medium text-[#a63f32] dark:text-[#fca5a5]">{qtyError}</p>
+            )}
           </Field>
           <Field label="Additional Cost (₹ Total)">
             <input
               data-testid="input-add-stock-price"
-              className="input"
+              className={`input ${costError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
               type="number"
               min="0"
-              step="any"
+              max={MAX_STOCK_COST}
+              step="0.01"
+              maxLength={12}
               value={form.price}
-              onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+              onChange={handleCostChange}
+              onKeyDown={handleCostKeyDown}
+              onPaste={handleCostPaste}
               placeholder="e.g. 250000"
               disabled={isSaving}
               required
             />
+            {costError && (
+              <p data-testid="error-add-stock-price" className="mt-1 text-xs font-medium text-[#a63f32] dark:text-[#fca5a5]">{costError}</p>
+            )}
           </Field>
         </div>
 
         {/* Real-time calculated projection */}
-        <div className="mt-5 grid gap-3 rounded-xl bg-[#e4efe7]/50 p-4 sm:grid-cols-3 dark:bg-[#162f27] dark:border dark:border-[#1e493b]">
-          <div>
+        <div className="mt-5 grid grid-cols-1 gap-3 rounded-xl bg-[#e4efe7]/50 p-4 sm:grid-cols-3 dark:bg-[#162f27] dark:border dark:border-[#1e493b] overflow-hidden">
+          <div className="min-w-0 overflow-hidden">
             <p className="text-xs text-[#526359] dark:text-[#92b1a3]">New Total Animals</p>
-            <p className="mt-1 font-display text-xl font-extrabold text-[#183f35] dark:text-[#edf6f2]">
-              {formatNumber(newTotalAnimals)}
+            <p
+              title={`${newAnimalsFormatted.full} animals`}
+              className={`mt-1 font-display font-extrabold leading-tight text-[#183f35] dark:text-[#edf6f2] truncate break-words [overflow-wrap:anywhere] ${newAnimalsFormatted.fontSize}`}
+            >
+              {newAnimalsFormatted.display}
             </p>
-            <p className="text-[11px] font-semibold text-[#246b59] dark:text-[#4ade80]">
-              (+{formatNumber(qty)} animals)
+            <p
+              title={`(+${addQtyFormatted.full} animals)`}
+              className="text-[11px] font-semibold text-[#246b59] dark:text-[#4ade80] truncate break-words [overflow-wrap:anywhere]"
+            >
+              {qtyError || qty > MAX_STOCK_QTY ? (
+                <span>
+                  (+{addQtyFormatted.display}) · <span className="text-[#a63f32] dark:text-[#fca5a5]">Exceeds limit</span>
+                </span>
+              ) : (
+                `(+${addQtyFormatted.display} animals)`
+              )}
             </p>
           </div>
-          <div>
+          <div className="min-w-0 overflow-hidden">
             <p className="text-xs text-[#526359] dark:text-[#92b1a3]">New Total Hissa</p>
-            <p className="mt-1 font-display text-xl font-extrabold text-[#246b59] dark:text-[#4ade80]">
-              {formatNumber(newTotalHissa)}
+            <p
+              title={`${newHissaFormatted.full} hissa`}
+              className={`mt-1 font-display font-extrabold leading-tight text-[#246b59] dark:text-[#4ade80] truncate break-words [overflow-wrap:anywhere] ${newHissaFormatted.fontSize}`}
+            >
+              {newHissaFormatted.display}
             </p>
-            <p className="text-[11px] font-semibold text-[#246b59] dark:text-[#4ade80]">
-              (+{formatNumber(additionalHissa)} hissa)
+            <p
+              title={`(+${addHissaFormatted.full} hissa)`}
+              className="text-[11px] font-semibold text-[#246b59] dark:text-[#4ade80] truncate break-words [overflow-wrap:anywhere]"
+            >
+              {qtyError || qty > MAX_STOCK_QTY ? (
+                <span>
+                  (+{addHissaFormatted.display}) · <span className="text-[#a63f32] dark:text-[#fca5a5]">Exceeds limit</span>
+                </span>
+              ) : (
+                `(+${addHissaFormatted.display} hissa)`
+              )}
             </p>
           </div>
-          <div>
+          <div className="min-w-0 overflow-hidden">
             <p className="text-xs text-[#526359] dark:text-[#92b1a3]">New Total Batch Value</p>
-            <p className="mt-1 font-display text-xl font-extrabold text-[#183f35] dark:text-[#edf6f2]">
+            <p
+              className="mt-1 font-display text-lg sm:text-xl font-extrabold leading-tight text-[#183f35] dark:text-[#edf6f2] truncate break-words [overflow-wrap:anywhere]"
+              title={formatMoney(newTotalPrice)}
+            >
               {formatMoney(newTotalPrice)}
             </p>
-            <p className="text-[11px] font-semibold text-[#9b6b1e] dark:text-[#f3c46a]">
-              (+{formatMoney(addPrice)})
+            <p
+              className="text-[11px] font-semibold text-[#9b6b1e] dark:text-[#f3c46a] truncate break-words [overflow-wrap:anywhere]"
+              title={`+${formatMoney(addPrice)}`}
+            >
+              {costError || addPrice > MAX_STOCK_COST ? (
+                <span>
+                  (+{formatMoney(addPrice)}) · <span className="text-[#a63f32] dark:text-[#fca5a5]">Exceeds ₹10 Cr limit</span>
+                </span>
+              ) : (
+                `(+${formatMoney(addPrice)})`
+              )}
             </p>
           </div>
         </div>
@@ -306,7 +673,7 @@ export function AddStockModal({ item, onClose, onSave, onEditBatch, apiError, is
         <ModalActions
           onClose={onClose}
           submitLabel={isSaving ? 'Adding Stock...' : `Confirm +${qty || 0} Animals`}
-          disabled={isSaving || qty < 1 || isNaN(addPrice) || addPrice < 0}
+          disabled={isSaving || !isFormValid}
         />
       </form>
     </Modal>
@@ -322,19 +689,442 @@ export function InventoryModal({
   duplicateBatch,
   apiError,
   isSaving,
+  activeSeasonYear,
 }) {
+  const { min: minBatchYear, max: maxBatchYear, active: activeYear } = getBatchYearRange(
+    activeSeasonYear || getActiveSeasonYear()
+  );
+
   const [form, setForm] = useState({
-    batchYear: item?.batchYear ?? getActiveSeasonYear(),
+    batchYear: item?.batchYear ?? activeYear,
     totalAnimals: item?.totalAnimals ?? '',
     totalPrice: item?.totalPrice ?? '',
     animalType: item?.animalType || item?.animal || 'Buffalo',
   });
+  const [qtyError, setQtyError] = useState(() => {
+    if (item?.totalAnimals !== undefined && item?.totalAnimals !== null && item?.totalAnimals !== '') {
+      const num = Number(item.totalAnimals);
+      if (isNaN(num) || num < 1) return 'Total animals must be at least 1.';
+      if (num > MAX_STOCK_QTY) return `Total animals cannot exceed ${formatNumber(MAX_STOCK_QTY)}.`;
+    }
+    return '';
+  });
+  const [costError, setCostError] = useState(() => {
+    if (item?.totalPrice !== undefined && item?.totalPrice !== null && item?.totalPrice !== '') {
+      const num = Number(item.totalPrice);
+      if (isNaN(num) || num < 0) return 'Batch purchase cost must be zero or a positive amount.';
+      if (num > MAX_STOCK_COST || String(item.totalPrice).split('.')[0].length > MAX_COST_DIGITS) {
+        return `Batch purchase cost cannot exceed ${formatMoney(MAX_STOCK_COST)} (10 Crore, max 9 digits).`;
+      }
+    }
+    return '';
+  });
+
+  const [yearError, setYearError] = useState(() => {
+    const yr = Number(item?.batchYear ?? activeYear);
+    if (isNaN(yr) || yr < minBatchYear || yr > maxBatchYear) {
+      return `Batch year must be between ${minBatchYear} and ${maxBatchYear}.`;
+    }
+    return '';
+  });
+
+  useEffect(() => {
+    if (item) {
+      setForm({
+        batchYear: item?.batchYear ?? activeYear,
+        totalAnimals: item?.totalAnimals ?? '',
+        totalPrice: item?.totalPrice ?? '',
+        animalType: item?.animalType || item?.animal || 'Buffalo',
+      });
+
+      const yr = Number(item?.batchYear ?? activeYear);
+      if (isNaN(yr) || yr < minBatchYear || yr > maxBatchYear) {
+        setYearError(`Batch year must be between ${minBatchYear} and ${maxBatchYear}.`);
+      } else {
+        setYearError('');
+      }
+
+      const numAnimals = Number(item?.totalAnimals);
+      if (item?.totalAnimals !== undefined && item?.totalAnimals !== '' && (isNaN(numAnimals) || numAnimals < 1)) {
+        setQtyError('Total animals must be at least 1.');
+      } else if (numAnimals > MAX_STOCK_QTY) {
+        setQtyError(`Total animals cannot exceed ${formatNumber(MAX_STOCK_QTY)} (max 5 digits).`);
+      } else {
+        setQtyError('');
+      }
+
+      const numPrice = Number(item?.totalPrice);
+      if (item?.totalPrice !== undefined && item?.totalPrice !== '' && (isNaN(numPrice) || numPrice < 0)) {
+        setCostError('Batch purchase cost must be zero or a positive amount.');
+      } else if (numPrice > MAX_STOCK_COST || String(item?.totalPrice || '').split('.')[0].length > MAX_COST_DIGITS) {
+        setCostError(`Batch purchase cost cannot exceed ${formatMoney(MAX_STOCK_COST)} (10 Crore, max 9 digits).`);
+      } else {
+        setCostError('');
+      }
+    }
+  }, [item, activeYear, minBatchYear, maxBatchYear]);
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
-  const computedTotalHissa = Number(form.totalAnimals || 0) * 7;
+  const computedTotalHissa = calculateTotalHissa(form.totalAnimals);
   const bookedCount = item?.bookedHissa || 0;
-  const computedAvailableHissa = Math.max(computedTotalHissa - bookedCount, 0);
+  const computedAvailableHissa = calculateAvailableHissa(computedTotalHissa, bookedCount);
+
+  const totalHissaFormatted = formatHissaValue(computedTotalHissa);
+  const availableHissaFormatted = formatHissaValue(computedAvailableHissa);
+  const animalCountFormatted = formatHissaValue(form.totalAnimals);
+
+  const handleYearKeyDown = (e) => {
+    if (
+      e.key === 'Backspace' ||
+      e.key === 'Delete' ||
+      e.key === 'Tab' ||
+      e.key === 'ArrowLeft' ||
+      e.key === 'ArrowRight' ||
+      e.key === 'ArrowUp' ||
+      e.key === 'ArrowDown' ||
+      e.key === 'Home' ||
+      e.key === 'End' ||
+      e.key === 'Enter' ||
+      e.key === 'Escape' ||
+      e.ctrlKey ||
+      e.metaKey
+    ) {
+      return;
+    }
+    if (['e', 'E', '+', '-', '.'].includes(e.key) || !/^\d$/.test(e.key)) {
+      e.preventDefault();
+      setYearError('Scientific notation, decimals, and signs are not allowed.');
+      return;
+    }
+    const input = e.target;
+    const hasSelection =
+      input &&
+      typeof input.selectionStart === 'number' &&
+      typeof input.selectionEnd === 'number' &&
+      input.selectionStart !== input.selectionEnd;
+    if (!hasSelection && String(form.batchYear || '').length >= 4) {
+      e.preventDefault();
+      setYearError(`Batch year must be a 4-digit year between ${minBatchYear} and ${maxBatchYear}.`);
+    }
+  };
+
+  const handleYearPaste = (e) => {
+    const pasted = e.clipboardData?.getData('text') || '';
+    if (/[eE+.\-]/.test(pasted)) {
+      e.preventDefault();
+      setYearError('Batch year must be a 4-digit whole year.');
+      return;
+    }
+    const clean = pasted.replace(/\D/g, '').slice(0, 4);
+    if (!clean) return;
+    e.preventDefault();
+    set('batchYear', clean);
+    const y = Number(clean);
+    if (isNaN(y) || y < minBatchYear || y > maxBatchYear || clean.length !== 4) {
+      setYearError(`Batch year must be between ${minBatchYear} and ${maxBatchYear}.`);
+    } else {
+      setYearError('');
+    }
+  };
+
+  const handleYearChange = (e) => {
+    let val = e.target.value;
+
+    if (val === '') {
+      setYearError('Batch year is required.');
+      set('batchYear', '');
+      return;
+    }
+
+    if (val.includes('.') || val.includes('e') || val.includes('E') || val.includes('+') || val.includes('-')) {
+      setYearError('Batch year must be a 4-digit whole year.');
+      val = val.replace(/[eE+\-\.]/g, '');
+    }
+
+    if (val.length > 4) {
+      val = val.slice(0, 4);
+    }
+
+    const y = Number(val);
+    if (isNaN(y) || y < minBatchYear || y > maxBatchYear || val.length !== 4) {
+      setYearError(`Batch year must be between ${minBatchYear} and ${maxBatchYear}.`);
+    } else {
+      setYearError('');
+    }
+
+    set('batchYear', val);
+  };
+
+  const handleYearBlur = () => {
+    const val = String(form.batchYear || '').trim();
+    if (!val) {
+      setYearError('Batch year is required.');
+      return;
+    }
+    const y = Number(val);
+    if (isNaN(y) || y < minBatchYear || y > maxBatchYear || val.length !== 4) {
+      setYearError(`Batch year must be between ${minBatchYear} and ${maxBatchYear}.`);
+    } else {
+      setYearError('');
+    }
+  };
+
+  const handleQuantityKeyDown = (e) => {
+    if (
+      e.key === 'Backspace' ||
+      e.key === 'Delete' ||
+      e.key === 'Tab' ||
+      e.key === 'ArrowLeft' ||
+      e.key === 'ArrowRight' ||
+      e.key === 'ArrowUp' ||
+      e.key === 'ArrowDown' ||
+      e.key === 'Home' ||
+      e.key === 'End' ||
+      e.key === 'Enter' ||
+      e.key === 'Escape' ||
+      e.ctrlKey ||
+      e.metaKey
+    ) {
+      return;
+    }
+    if (['e', 'E', '+', '-', '.'].includes(e.key) || !/^\d$/.test(e.key)) {
+      e.preventDefault();
+      setQtyError('Scientific notation, decimals, and signs are not allowed.');
+      return;
+    }
+    const input = e.target;
+    const hasSelection =
+      input &&
+      typeof input.selectionStart === 'number' &&
+      typeof input.selectionEnd === 'number' &&
+      input.selectionStart !== input.selectionEnd;
+    if (!hasSelection && String(form.totalAnimals || '').length >= MAX_QTY_DIGITS) {
+      e.preventDefault();
+      setQtyError(`Total animals cannot exceed ${formatNumber(MAX_STOCK_QTY)} (max ${MAX_QTY_DIGITS} digits).`);
+    }
+  };
+
+  const handleQuantityPaste = (e) => {
+    const pasted = e.clipboardData?.getData('text') || '';
+    if (/[eE+.\-]/.test(pasted)) {
+      e.preventDefault();
+      setQtyError('Scientific notation, decimals, and signs are not allowed.');
+      return;
+    }
+    const clean = pasted.replace(/\D/g, '').slice(0, MAX_QTY_DIGITS);
+    if (!clean) return;
+    e.preventDefault();
+    set('totalAnimals', clean);
+    const num = Number(clean);
+    if (num > MAX_STOCK_QTY) {
+      setQtyError(`Total animals cannot exceed ${formatNumber(MAX_STOCK_QTY)} (max ${MAX_QTY_DIGITS} digits).`);
+    } else {
+      setQtyError('');
+    }
+  };
+
+  const handleQuantityChange = (e) => {
+    if (e.target.validity?.badInput) {
+      setQtyError('Please enter a valid whole number of animals.');
+      return;
+    }
+
+    let val = e.target.value;
+
+    if (val === '') {
+      setQtyError('');
+      set('totalAnimals', '');
+      return;
+    }
+
+    if (val.includes('.') || val.includes('e') || val.includes('E') || val.includes('+') || val.includes('-')) {
+      setQtyError('Scientific notation, decimals, and signs are not allowed.');
+      val = val.replace(/\D/g, '');
+    }
+
+    if (val.length > MAX_QTY_DIGITS) {
+      val = val.slice(0, MAX_QTY_DIGITS);
+    }
+
+    const num = Number(val);
+    if (isNaN(num) || !Number.isFinite(num) || num < 1) {
+      setQtyError('Total animals must be at least 1.');
+    } else if (num > MAX_STOCK_QTY) {
+      setQtyError(`Total animals cannot exceed ${formatNumber(MAX_STOCK_QTY)} (max ${MAX_QTY_DIGITS} digits).`);
+    } else {
+      setQtyError('');
+    }
+
+    set('totalAnimals', val);
+  };
+
+  const handleCostKeyDown = (e) => {
+    if (
+      e.key === 'Backspace' ||
+      e.key === 'Delete' ||
+      e.key === 'Tab' ||
+      e.key === 'ArrowLeft' ||
+      e.key === 'ArrowRight' ||
+      e.key === 'ArrowUp' ||
+      e.key === 'ArrowDown' ||
+      e.key === 'Home' ||
+      e.key === 'End' ||
+      e.key === 'Enter' ||
+      e.key === 'Escape' ||
+      e.ctrlKey ||
+      e.metaKey
+    ) {
+      return;
+    }
+    if (['e', 'E', '+', '-'].includes(e.key) || (!/^\d$/.test(e.key) && e.key !== '.')) {
+      e.preventDefault();
+      setCostError('Only numbers and a decimal point are allowed.');
+      return;
+    }
+    if (e.key === '.' && String(form.totalPrice || '').includes('.')) {
+      e.preventDefault();
+      setCostError('Only one decimal point is allowed.');
+      return;
+    }
+    // Restrict typing more digits if whole number portion already has max allowed digits
+    const input = e.target;
+    const hasSelection =
+      input &&
+      typeof input.selectionStart === 'number' &&
+      typeof input.selectionEnd === 'number' &&
+      input.selectionStart !== input.selectionEnd;
+    if (!hasSelection) {
+      const currentVal = String(form.totalPrice || '');
+      const parts = currentVal.split('.');
+      const dotIndex = currentVal.indexOf('.');
+      const cursor = input?.selectionStart ?? currentVal.length;
+      if (/^\d$/.test(e.key) && (dotIndex === -1 || cursor <= dotIndex) && parts[0].length >= MAX_COST_DIGITS) {
+        e.preventDefault();
+        setCostError(`Batch purchase cost cannot exceed ${formatMoney(MAX_STOCK_COST)} (10 Crore, max ${MAX_COST_DIGITS} digits).`);
+      }
+    }
+  };
+
+  const handleCostPaste = (e) => {
+    const pasted = e.clipboardData?.getData('text') || '';
+    if (/[eE+\-]/.test(pasted)) {
+      e.preventDefault();
+      setCostError('Scientific notation, signs, and exponential numbers are not allowed.');
+      return;
+    }
+    let cleaned = pasted.replace(/[^\d.]/g, '');
+    if (!cleaned) return;
+    if (cleaned.includes('.')) {
+      const [whole, decimal] = cleaned.split('.');
+      cleaned = `${whole.slice(0, MAX_COST_DIGITS)}.${(decimal || '').slice(0, 2)}`;
+    } else if (cleaned.length > MAX_COST_DIGITS) {
+      cleaned = cleaned.slice(0, MAX_COST_DIGITS);
+    }
+    e.preventDefault();
+    set('totalPrice', cleaned);
+    const num = Number(cleaned);
+    if (num > MAX_STOCK_COST) {
+      setCostError(`Batch purchase cost cannot exceed ${formatMoney(MAX_STOCK_COST)} (10 Crore, max ${MAX_COST_DIGITS} digits).`);
+    } else {
+      setCostError('');
+    }
+  };
+
+  const handleCostChange = (e) => {
+    if (e.target.validity?.badInput) {
+      setCostError('Please enter a valid numeric cost without exponential or special characters.');
+      return;
+    }
+
+    let val = e.target.value;
+
+    if (val === '') {
+      setCostError('');
+      set('totalPrice', '');
+      return;
+    }
+
+    if (val.includes('-')) {
+      setCostError('Batch purchase cost must be zero or a positive amount.');
+      val = val.replace(/-/g, '');
+    }
+
+    if (val.includes('e') || val.includes('E') || val.includes('+')) {
+      setCostError('Scientific notation and signs are not allowed.');
+      val = val.replace(/[eE+]/g, '');
+    }
+
+    // Currency formatting: restrict to at most 2 decimal places
+    if (val.includes('.')) {
+      const [whole, decimal] = val.split('.');
+      val = `${whole.slice(0, MAX_COST_DIGITS)}.${(decimal || '').slice(0, 2)}`;
+    } else if (val.length > MAX_COST_DIGITS) {
+      val = val.slice(0, MAX_COST_DIGITS);
+    }
+
+    const num = Number(val);
+    const rawWhole = val.split('.')[0];
+    if (isNaN(num) || !Number.isFinite(num)) {
+      setCostError('Please enter a valid numeric cost.');
+    } else if (num < 0) {
+      setCostError('Batch purchase cost must be zero or a positive amount.');
+    } else if (num > MAX_STOCK_COST || rawWhole.length > MAX_COST_DIGITS) {
+      setCostError(`Batch purchase cost cannot exceed ${formatMoney(MAX_STOCK_COST)} (10 Crore, max ${MAX_COST_DIGITS} digits).`);
+    } else {
+      setCostError('');
+    }
+
+    set('totalPrice', val);
+  };
+
+  const numYear = Number(form.batchYear);
+  const numAnimals = Number(form.totalAnimals);
+  const numPrice = Number(form.totalPrice);
+  const yearStr = String(form.batchYear || '').trim();
+  const animalsStr = String(form.totalAnimals || '').trim();
+  const priceStr = String(form.totalPrice || '').trim();
+
+  const isYearValid =
+    yearStr !== '' &&
+    !yearError &&
+    !isNaN(numYear) &&
+    Number.isInteger(numYear) &&
+    numYear >= minBatchYear &&
+    numYear <= maxBatchYear &&
+    yearStr.length === 4;
+
+  const isQtyValid =
+    animalsStr !== '' &&
+    !qtyError &&
+    !/[eE+.\-]/.test(animalsStr) &&
+    !isNaN(numAnimals) &&
+    Number.isFinite(numAnimals) &&
+    Number.isInteger(numAnimals) &&
+    numAnimals >= 1 &&
+    numAnimals <= MAX_STOCK_QTY &&
+    animalsStr.length <= MAX_QTY_DIGITS;
+
+  const isCostValid =
+    priceStr !== '' &&
+    !costError &&
+    !/[eE+\-]/.test(priceStr) &&
+    !isNaN(numPrice) &&
+    Number.isFinite(numPrice) &&
+    numPrice >= 0 &&
+    numPrice <= MAX_STOCK_COST &&
+    priceStr.split('.')[0].length <= MAX_COST_DIGITS;
+
+  const isCapacityValid =
+    typeof computedTotalHissa === 'bigint'
+      ? computedTotalHissa >= BigInt(bookedCount)
+      : computedTotalHissa >= bookedCount;
+
+  const isFormValid =
+    isYearValid &&
+    isQtyValid &&
+    isCostValid &&
+    !(bookedCount > 0 && !isCapacityValid);
 
   return (
     <Modal
@@ -345,6 +1135,7 @@ export function InventoryModal({
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          if (!isFormValid) return;
           onSave(form, item);
         }}
       >
@@ -386,76 +1177,120 @@ export function InventoryModal({
           <Field label="Batch Year">
             <input
               data-testid="input-batch-year"
-              className="input"
+              className={`input ${yearError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
               type="number"
-              min="2020"
-              max="2035"
+              min={minBatchYear}
+              max={maxBatchYear}
+              maxLength={4}
               value={form.batchYear}
-              onChange={(e) => set('batchYear', e.target.value)}
+              onChange={handleYearChange}
+              onKeyDown={handleYearKeyDown}
+              onPaste={handleYearPaste}
+              onBlur={handleYearBlur}
+              placeholder={`e.g. ${activeYear}`}
               disabled={isSaving}
               required
             />
+            {yearError ? (
+              <p data-testid="error-batch-year" className="mt-1 text-xs font-medium text-[#a63f32] dark:text-[#fca5a5]">{yearError}</p>
+            ) : (
+              <p className="mt-1 text-[11px] text-[#7b867e] dark:text-[#92b1a3]">
+                Allowed range: {minBatchYear}–{maxBatchYear} (Current operating season or immediate next year)
+              </p>
+            )}
           </Field>
           <Field label="Total Animals">
             <input
               data-testid="input-total-animals"
-              className="input"
+              className={`input ${qtyError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
               type="number"
               min="1"
+              max={MAX_STOCK_QTY}
+              maxLength={MAX_QTY_DIGITS}
               value={form.totalAnimals}
-              onChange={(e) => set('totalAnimals', e.target.value)}
+              onChange={handleQuantityChange}
+              onKeyDown={handleQuantityKeyDown}
+              onPaste={handleQuantityPaste}
               disabled={isSaving}
               placeholder="e.g. 10"
               required
             />
+            {qtyError && (
+              <p data-testid="error-total-animals" className="mt-1 text-xs font-medium text-[#a63f32] dark:text-[#fca5a5]">{qtyError}</p>
+            )}
           </Field>
           <Field label="Batch Purchase Cost (₹)">
             <input
               data-testid="input-total-price"
-              className="input"
+              className={`input ${costError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
               type="number"
               min="0"
-              step="any"
+              max={MAX_STOCK_COST}
+              step="0.01"
+              maxLength={12}
               value={form.totalPrice}
-              onChange={(e) => set('totalPrice', e.target.value)}
+              onChange={handleCostChange}
+              onKeyDown={handleCostKeyDown}
+              onPaste={handleCostPaste}
               disabled={isSaving}
               placeholder="e.g. 350000"
               required
             />
+            {costError && (
+              <p data-testid="error-total-price" className="mt-1 text-xs font-medium text-[#a63f32] dark:text-[#fca5a5]">{costError}</p>
+            )}
           </Field>
         </div>
 
-        <div className="mt-5 grid gap-3 rounded-xl bg-[#f5f0e5] p-4 sm:grid-cols-2 dark:bg-[#162f27] dark:border dark:border-[#1e493b]">
-          <div>
+        <div className="mt-5 grid grid-cols-1 gap-3 rounded-xl bg-[#f5f0e5] p-4 sm:grid-cols-2 dark:bg-[#162f27] dark:border dark:border-[#1e493b] overflow-hidden">
+          <div className="min-w-0 overflow-hidden">
             <p className="text-xs text-[#7b867e] dark:text-[#92b1a3]">Auto-calculated Total Hissa</p>
-            <p className="mt-1 font-display text-2xl font-extrabold text-[#183f35] dark:text-[#edf6f2]">
-              {formatNumber(computedTotalHissa)}
+            <p
+              title={`${totalHissaFormatted.full} Hissa`}
+              className={`mt-1 font-display font-extrabold text-[#183f35] dark:text-[#edf6f2] truncate break-words [overflow-wrap:anywhere] ${totalHissaFormatted.fontSize}`}
+            >
+              {totalHissaFormatted.display}
             </p>
-            <p className="text-[11px] text-[#8a948e] dark:text-[#789d8e]">({form.totalAnimals || 0} animals × 7)</p>
+            <p
+              title={`(${animalCountFormatted.full} animals × 7)`}
+              className="text-[11px] text-[#8a948e] dark:text-[#789d8e] truncate break-words [overflow-wrap:anywhere]"
+            >
+              {qtyError || Number(form.totalAnimals) > MAX_STOCK_QTY ? (
+                <span>
+                  ({animalCountFormatted.display} animals × 7) ·{' '}
+                  <span className="font-semibold text-[#a63f32] dark:text-[#fca5a5]">Exceeds limit</span>
+                </span>
+              ) : (
+                `(${animalCountFormatted.display} animals × 7)`
+              )}
+            </p>
           </div>
-          <div>
+          <div className="min-w-0 overflow-hidden">
             <p className="text-xs text-[#7b867e] dark:text-[#92b1a3]">Available Hissa after bookings</p>
-            <p className="mt-1 font-display text-2xl font-extrabold text-[#246b59] dark:text-[#4ade80]">
-              {formatNumber(computedAvailableHissa)}
+            <p
+              title={`${availableHissaFormatted.full} Hissa`}
+              className={`mt-1 font-display font-extrabold text-[#246b59] dark:text-[#4ade80] truncate break-words [overflow-wrap:anywhere] ${availableHissaFormatted.fontSize}`}
+            >
+              {availableHissaFormatted.display}
             </p>
             {bookedCount > 0 && (
-              <p className="text-[11px] text-[#9b6b1e] dark:text-[#f3c46a]">
+              <p className="text-[11px] text-[#9b6b1e] dark:text-[#f3c46a] truncate break-words [overflow-wrap:anywhere]">
                 ({formatNumber(bookedCount)} hissa already booked)
               </p>
             )}
           </div>
         </div>
 
-        {bookedCount > 0 && computedTotalHissa < bookedCount && (
+        {bookedCount > 0 && (typeof computedTotalHissa === 'bigint' ? computedTotalHissa < BigInt(bookedCount) : computedTotalHissa < bookedCount) && (
           <div className="mt-3 rounded-xl border border-[#efb7ae] bg-[#fff3f0] p-3 text-xs font-semibold text-[#a63f32] dark:border-[#5d2520] dark:bg-[#331614] dark:text-[#fca5a5]">
-            ⚠️ Capacity protection: Cannot reduce total hissa ({formatNumber(computedTotalHissa)}) below {formatNumber(bookedCount)} booked hissa. Minimum {Math.ceil(bookedCount / 7)} animals required.
+            ⚠️ Capacity protection: Cannot reduce total hissa ({totalHissaFormatted.display}) below {formatNumber(bookedCount)} booked hissa. Minimum {Math.ceil(bookedCount / 7)} animals required.
           </div>
         )}
 
         <ModalActions
           onClose={onClose}
           submitLabel={isSaving ? 'Saving...' : item ? 'Save changes' : `Add ${form.animalType || 'Animal'} batch`}
-          disabled={isSaving || (bookedCount > 0 && computedTotalHissa < bookedCount)}
+          disabled={isSaving || !isFormValid}
         />
       </form>
     </Modal>
@@ -543,9 +1378,9 @@ export function InventoryView({ item: initialItem, animalId, onClose, onAddStock
       ) : (
         <div className="grid grid-cols-2 gap-3">
           {fields.map(([label, value]) => (
-            <div key={label} className="soft-inset rounded-xl p-4">
+            <div key={label} className="soft-inset rounded-xl p-4 min-w-0 overflow-hidden">
               <p className="text-xs text-[#78847c] dark:text-[#92b1a3]">{label}</p>
-              <p className="mt-1 font-bold text-[#315246] dark:text-[#edf6f2]">{value}</p>
+              <p className="mt-1 font-bold text-[#315246] dark:text-[#edf6f2] break-words [overflow-wrap:anywhere]">{value}</p>
             </div>
           ))}
         </div>
@@ -664,6 +1499,23 @@ export default function AnimalInventory({ data, patchData, notify }) {
   });
 
   // Extract distinct options for Custom Dropdowns
+  const distinctAnimalTypes = Array.from(
+    new Map(
+      inventory
+        .map((x) => (x.animalType || x.animal || '').trim())
+        .filter(Boolean)
+        .map((type) => [type.toLowerCase(), type])
+    ).values()
+  );
+  const hasMultipleTypes = distinctAnimalTypes.length > 1;
+  const typeOptions = ['All Types', ...distinctAnimalTypes];
+
+  useEffect(() => {
+    if (!hasMultipleTypes && typeFilter !== 'All Types') {
+      setTypeFilter('All Types');
+    }
+  }, [hasMultipleTypes, typeFilter]);
+
   const allDistinctYears = Array.from(new Set([...knownYears, ...inventory.map((x) => Number(x.batchYear)).filter(Boolean)])).sort((a, b) => b - a);
   const yearOptions = ['All Years', ...allDistinctYears.map(String)];
 
@@ -683,18 +1535,63 @@ export default function AnimalInventory({ data, patchData, notify }) {
     setDuplicateBatch(null);
     setIsSaving(true);
 
-    const animals = Number(form.totalAnimals);
-    if (!animals || animals < 1) {
+    // Validate Batch Year
+    const yearStr = String(form.batchYear || '').trim();
+    if (/[eE+.-]/.test(yearStr)) {
+      setIsSaving(false);
+      const errText = 'Batch year must be a 4-digit whole year.';
+      setApiError(errText);
+      return notify?.(errText, 'error');
+    }
+    const { min: minBatchYear, max: maxBatchYear } = getBatchYearRange(currentYear);
+    const year = Number(yearStr);
+    if (!year || isNaN(year) || year < minBatchYear || year > maxBatchYear || yearStr.length !== 4) {
+      setIsSaving(false);
+      const errText = `Batch year must be between ${minBatchYear} and ${maxBatchYear}.`;
+      setApiError(errText);
+      return notify?.(errText, 'error');
+    }
+
+    // Validate Total Animals
+    const animalsStr = String(form.totalAnimals || '').trim();
+    if (/[eE+.-]/.test(animalsStr)) {
+      setIsSaving(false);
+      const errText = 'Total animals must be a whole positive integer without exponents or decimals';
+      setApiError(errText);
+      return notify?.(errText, 'error');
+    }
+    const animals = Number(animalsStr);
+    if (!animals || isNaN(animals) || animals < 1) {
       setIsSaving(false);
       const errText = 'Total animals count must be greater than zero';
       setApiError(errText);
       return notify?.(errText, 'error');
     }
+    if (animals > MAX_STOCK_QTY || animalsStr.length > MAX_QTY_DIGITS) {
+      setIsSaving(false);
+      const errText = `Total animals cannot exceed ${formatNumber(MAX_STOCK_QTY)} (max 5 digits)`;
+      setApiError(errText);
+      return notify?.(errText, 'error');
+    }
 
-    const price = Number(form.totalPrice);
-    if (isNaN(price) || price < 0) {
+    // Validate Batch Purchase Cost
+    const priceStr = String(form.totalPrice || '').trim();
+    if (/[eE+\-]/.test(priceStr)) {
+      setIsSaving(false);
+      const errText = 'Scientific notation and negative amounts are not allowed for cost. Please enter a standard numeric amount.';
+      setApiError(errText);
+      return notify?.(errText, 'error');
+    }
+    const price = Number(priceStr);
+    if (isNaN(price) || !Number.isFinite(price) || price < 0) {
       setIsSaving(false);
       const errText = 'Total price must be zero or a positive amount';
+      setApiError(errText);
+      return notify?.(errText, 'error');
+    }
+    if (price > MAX_STOCK_COST || priceStr.split('.')[0].length > MAX_COST_DIGITS) {
+      setIsSaving(false);
+      const errText = `Total price cannot exceed ${formatMoney(MAX_STOCK_COST)} (10 Crore, max 9 digits)`;
       setApiError(errText);
       return notify?.(errText, 'error');
     }
@@ -814,18 +1711,45 @@ export default function AnimalInventory({ data, patchData, notify }) {
     setIsSaving(true);
     setApiError(null);
     const targetId = item.animalId || item.id;
-    const qty = Number(payload.quantity);
-    const price = Number(payload.price);
 
-    if (!qty || qty < 1) {
+    const qtyStr = String(payload.quantity || '').trim();
+    if (/[eE+.-]/.test(qtyStr)) {
+      setIsSaving(false);
+      const err = 'Quantity must be a whole positive integer without exponents or decimals.';
+      setApiError(err);
+      return notify?.(err, 'error');
+    }
+    const qty = Number(qtyStr);
+    if (!qty || isNaN(qty) || qty < 1) {
       setIsSaving(false);
       const err = 'Quantity must be at least 1';
       setApiError(err);
       return notify?.(err, 'error');
     }
-    if (isNaN(price) || price < 0) {
+    if (qty > MAX_STOCK_QTY || qtyStr.length > MAX_QTY_DIGITS) {
+      setIsSaving(false);
+      const err = `Quantity cannot exceed ${formatNumber(MAX_STOCK_QTY)} animals (max 5 digits).`;
+      setApiError(err);
+      return notify?.(err, 'error');
+    }
+
+    const priceStr = String(payload.price || '').trim();
+    if (/[eE+\-]/.test(priceStr)) {
+      setIsSaving(false);
+      const err = 'Scientific notation and negative amounts are not allowed for price.';
+      setApiError(err);
+      return notify?.(err, 'error');
+    }
+    const price = Number(priceStr);
+    if (isNaN(price) || !Number.isFinite(price) || price < 0) {
       setIsSaving(false);
       const err = 'Price must be zero or positive';
+      setApiError(err);
+      return notify?.(err, 'error');
+    }
+    if (price > MAX_STOCK_COST || priceStr.split('.')[0].length > MAX_COST_DIGITS) {
+      setIsSaving(false);
+      const err = `Additional cost cannot exceed ${formatMoney(MAX_STOCK_COST)} (10 Crore, max 9 digits).`;
       setApiError(err);
       return notify?.(err, 'error');
     }
@@ -906,9 +1830,12 @@ export default function AnimalInventory({ data, patchData, notify }) {
           </div>
           <div className="flex flex-wrap items-center gap-3">
           
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e5f0e8] px-3.5 py-1.5 text-xs font-bold text-[#246b59] dark:bg-[#18382d] dark:text-[#4ade80]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#246b59] dark:bg-[#4ade80]" />
-              {isLoading ? '...' : `${formatNumber(totalAvailableHissa)} Hissa available`}
+            <span
+              title={isLoading ? '...' : `${formatNumber(totalAvailableHissa)} Hissa available`}
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#e5f0e8] px-3.5 py-1.5 text-xs font-bold text-[#246b59] dark:bg-[#18382d] dark:text-[#4ade80]"
+            >
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#246b59] dark:bg-[#4ade80]" />
+              <span className="truncate">{isLoading ? '...' : `${formatNumber(totalAvailableHissa)} Hissa available`}</span>
             </span>
           </div>
         </div>
@@ -938,6 +1865,28 @@ export default function AnimalInventory({ data, patchData, notify }) {
             )}
           </div>
 
+          {/* Animal type dropdown */}
+          <ProjectDropdown
+            value={typeFilter}
+            onChange={(newType) => {
+              setTypeFilter(newType);
+              loadAnimals({ typeFilter: newType, yearFilter });
+            }}
+            options={typeOptions}
+            icon={Layers}
+            testId="dropdown-filter-type"
+            placeholder="Filter by animal type"
+            placeholderValue="All Types"
+            disabled={!hasMultipleTypes}
+            title={
+              !hasMultipleTypes
+                ? distinctAnimalTypes.length === 1
+                  ? `Filtering disabled: only 1 animal type (${distinctAnimalTypes[0]}) is registered in inventory`
+                  : 'Filter disabled until multiple animal types are registered'
+                : undefined
+            }
+          />
+
           {/* Batch year dropdown */}
           <ProjectDropdown
             value={yearFilter}
@@ -953,7 +1902,7 @@ export default function AnimalInventory({ data, patchData, notify }) {
           />
 
           {/* Reset Filters action */}
-          {(typeFilter !== 'All Types' || yearFilter !== 'All Years' || searchQuery) && (
+          {((hasMultipleTypes && typeFilter !== 'All Types') || yearFilter !== 'All Years' || searchQuery) && (
             <button
               type="button"
               onClick={() => {
@@ -998,6 +1947,7 @@ export default function AnimalInventory({ data, patchData, notify }) {
           duplicateBatch={duplicateBatch}
           apiError={apiError}
           isSaving={isSaving}
+          activeSeasonYear={currentYear}
         />
       )}
 

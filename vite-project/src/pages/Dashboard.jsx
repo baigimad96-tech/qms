@@ -139,7 +139,28 @@ export function BookingsTable({
               (String(deletingId) === String(b.hissaBookingId) ||
                 String(deletingId) === String(b.id));
 
-            const displayId = b.receiptNumber || String(b.hissaBookingId || b.id);
+            const displayId = b.receiptNumber || String(b.hissaBookingId || b.id || '');
+            const personName = b.personName || b.qurbaniPersonName || 'Anonymous';
+            const animalName =
+              (typeof b.animal === 'string' && b.animal.trim()) ||
+              (typeof b.animalType === 'string' && b.animalType.trim()) ||
+              (typeof b.animal === 'object' && (b.animal?.animalType || b.animal?.name)) ||
+              (typeof b.animalType === 'object' && (b.animalType?.animalType || b.animalType?.name)) ||
+              'Buffalo';
+            const dayDisplay =
+              b.day ||
+              (typeof b.qurbaniDay === 'object' && b.qurbaniDay !== null
+                ? b.qurbaniDay.name || `Day ${b.qurbaniDay.dayNumber || b.qurbaniDay.id || 1}`
+                : typeof b.qurbaniDay === 'number'
+                ? `Day ${b.qurbaniDay}`
+                : b.qurbaniDayId
+                ? `Day ${b.qurbaniDayId}`
+                : typeof b.dayNumber === 'number'
+                ? `Day ${b.dayNumber}`
+                : 'Day 1');
+            const hissaVal = b.hissa !== undefined ? b.hissa : (b.totalHissa !== undefined ? b.totalHissa : 1);
+            const costVal = b.cost !== undefined ? b.cost : (b.totalHissaCost !== undefined ? b.totalHissaCost : 0);
+            const bookedBy = b.bookedBy || b.bookedByAdminName || 'System Administrator';
 
             return (
               <tr
@@ -153,14 +174,14 @@ export function BookingsTable({
                   </span>
                 </Td>
                 <Td>
-                  <span className="font-semibold text-[#315246] dark:text-[#edf6f2]">{b.personName}</span>
+                  <span className="font-semibold text-[#315246] dark:text-[#edf6f2]">{personName}</span>
                 </Td>
-                <Td className="dark:text-[#d3e3db]">{b.animal || b.animalType || 'Buffalo'}</Td>
+                <Td className="dark:text-[#d3e3db]">{animalName}</Td>
                 <Td>
-                  <Badge status={b.day} />
+                  <Badge status={dayDisplay} />
                 </Td>
-                <Td className="font-bold text-[#315246] dark:text-[#edf6f2]">{formatNumber(b.hissa)}</Td>
-                <Td className="font-medium text-[#315246] dark:text-[#edf6f2]">{formatMoney(b.cost)}</Td>
+                <Td className="font-bold text-[#315246] dark:text-[#edf6f2]">{formatNumber(hissaVal)}</Td>
+                <Td className="font-medium text-[#315246] dark:text-[#edf6f2]">{formatMoney(costVal)}</Td>
                 <Td>
                   <span
                     className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${
@@ -174,7 +195,7 @@ export function BookingsTable({
                       : b.meatWanted || 'Yes'}
                   </span>
                 </Td>
-                <Td className="text-xs text-[#526359] dark:text-[#92b1a3]">{b.bookedBy}</Td>
+                <Td className="text-xs text-[#526359] dark:text-[#92b1a3]">{bookedBy}</Td>
                 <Td className="whitespace-nowrap text-xs text-[#7b867e] dark:text-[#92b1a3]">
                   {compact ? formatShortDate(b.createdAt) : formatDateTime(b.createdAt)}
                 </Td>
@@ -242,7 +263,7 @@ export default function Dashboard({ data, navigate, notify }) {
     const targetId = booking.hissaBookingId || booking.id;
     try {
       setDownloadingId(targetId);
-      notify?.(`Generating PDF receipt for #${booking.receiptNumber || targetId}...`, 'info');
+      notify?.(`Generating PDF receipt for ${booking.receiptNumber || `#${targetId}`}...`, 'info');
       const filename = await downloadReceipt(booking);
       notify?.(`Receipt ${filename} downloaded successfully!`, 'success');
     } catch (err) {
@@ -340,7 +361,13 @@ export default function Dashboard({ data, navigate, notify }) {
             bookingId: b.hissaBookingId || b.id,
             hissaBookingId: b.hissaBookingId || b.id,
             personName: b.qurbaniPersonName || b.personName || 'Anonymous',
-            animal: b.animalType || b.animal || 'Buffalo',
+            animal: (
+              typeof b.animal === 'object' && b.animal !== null
+                ? b.animal.animalType || b.animal.animal_type || b.animal.name || b.animal.type || 'Buffalo'
+                : typeof b.animalType === 'object' && b.animalType !== null
+                ? b.animalType.animalType || b.animalType.animal_type || b.animalType.name || 'Buffalo'
+                : b.animalType || b.animal || 'Buffalo'
+            ),
             day: typeof b.qurbaniDay === 'number' ? `Day ${b.qurbaniDay}` : (b.day || `Day ${b.qurbaniDayId || 1}`),
             hissa: b.totalHissa !== undefined ? b.totalHissa : (b.hissa || 1),
             cost: b.totalHissaCost !== undefined ? b.totalHissaCost : (b.cost || 0),
@@ -399,7 +426,13 @@ export default function Dashboard({ data, navigate, notify }) {
             bookingId: b.hissaBookingId || b.id,
             hissaBookingId: b.hissaBookingId || b.id,
             personName: b.qurbaniPersonName || b.personName || 'Anonymous',
-            animal: b.animalType || b.animal || 'Buffalo',
+            animal: (
+              typeof b.animal === 'object' && b.animal !== null
+                ? b.animal.animalType || b.animal.animal_type || b.animal.name || b.animal.type || 'Buffalo'
+                : typeof b.animalType === 'object' && b.animalType !== null
+                ? b.animalType.animalType || b.animalType.animal_type || b.animalType.name || 'Buffalo'
+                : b.animalType || b.animal || 'Buffalo'
+            ),
             day: typeof b.qurbaniDay === 'number' ? `Day ${b.qurbaniDay}` : (b.day || `Day ${b.qurbaniDayId || 1}`),
             hissa: b.totalHissa !== undefined ? b.totalHissa : (b.hissa || 1),
             cost: b.totalHissaCost !== undefined ? b.totalHissaCost : (b.cost || 0),
@@ -500,6 +533,7 @@ export default function Dashboard({ data, navigate, notify }) {
         : `${inventory.length} active batches`,
       icon: Box,
       color: 'gold',
+      onClick: () => navigate('/inventory'),
     },
     {
       label: 'Total Hissa',
@@ -514,6 +548,7 @@ export default function Dashboard({ data, navigate, notify }) {
       sub: totalHissa > 0 ? `${Math.round((bookedHissa / totalHissa) * 100)}% committed` : '0% committed',
       icon: BookOpenCheck,
       color: 'blue',
+      onClick: () => navigate('/bookings'),
     },
     {
       label: 'Available Hissa',
@@ -528,6 +563,7 @@ export default function Dashboard({ data, navigate, notify }) {
       sub: revenueStats ? `${revenueStats.length} types contributing` : `${bookings.length} confirmed bookings`,
       icon: TrendingUp,
       color: 'orange',
+      onClick: () => navigate('/bookings'),
     },
   ];
 
@@ -555,7 +591,10 @@ export default function Dashboard({ data, navigate, notify }) {
       {/* Analytics Insights: Revenue by Animal Type (API 26) & Meat Distribution (API 25) */}
       <div className="mb-8 grid gap-6 md:grid-cols-2">
         {/* Total Booking Revenue (API 26) */}
-        <section className="card-surface rounded-2xl p-5 sm:p-6 flex flex-col justify-between">
+        <section
+          id="section-total-booking-revenue"
+          className="card-surface rounded-2xl p-5 sm:p-6 flex flex-col justify-between"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="kicker">Revenue</p>
@@ -563,15 +602,20 @@ export default function Dashboard({ data, navigate, notify }) {
                 Total Booking Revenue
               </h3>
             </div>
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-[#e4efe7] text-[#246b59] dark:bg-[#193a2f] dark:text-[#4ade80]">
-              <TrendingUp size={18} />
-            </div>
+            <button
+              data-testid="link-booking-revenue"
+              onClick={() => navigate('/bookings')}
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-bold whitespace-nowrap text-[#246b59] hover:underline dark:text-[#52c99a]"
+            >
+              View bookings <ArrowRight size={13} className="shrink-0" />
+            </button>
           </div>
 
-          <div className="my-auto py-6">
+          <div className="my-auto py-6 min-w-0 overflow-hidden">
             <p
               data-testid="text-total-booking-revenue"
-              className="font-mono text-3xl sm:text-4xl font-extrabold tracking-tight text-[#183f35] dark:text-[#52c99a]"
+              title={formatMoney(totalRevenue)}
+              className="font-mono text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-[#183f35] dark:text-[#52c99a] break-words [overflow-wrap:anywhere]"
             >
               {formatMoney(totalRevenue)}
             </p>
@@ -582,7 +626,7 @@ export default function Dashboard({ data, navigate, notify }) {
         </section>
 
         {/* Meat Requirement Statistics (API 25) */}
-        <section className="card-surface rounded-2xl p-5 sm:p-6">
+        <section id="section-meat-statistics" className="card-surface rounded-2xl p-5 sm:p-6">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <p className="kicker">Meat logistics</p>
@@ -647,8 +691,8 @@ export default function Dashboard({ data, navigate, notify }) {
       {/* Middle Section: Qurbani Day Capacity (API 24) & Operational Note */}
       <div className="mb-8 grid gap-6 xl:grid-cols-[1.25fr_.75fr]">
         {/* Qurbani Day Capacity (API 24) */}
-        <section className="card-surface rounded-2xl p-5 sm:p-6">
-          <div className="mb-5 flex items-start justify-between">
+        <section id="section-qurbani-days-capacity" className="card-surface rounded-2xl p-5 sm:p-6">
+          <div className="mb-5 flex items-start justify-between gap-3">
             <div>
               <p className="kicker">Capacity watch</p>
               <h3 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em] text-[#183f35] dark:text-[#edf6f2]">
@@ -658,9 +702,9 @@ export default function Dashboard({ data, navigate, notify }) {
             <button
               data-testid="link-qurbani-days"
               onClick={() => navigate('/qurbani-days')}
-              className="text-xs font-bold text-[#246b59] dark:text-[#52c99a] hover:underline"
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-bold whitespace-nowrap text-[#246b59] hover:underline dark:text-[#52c99a]"
             >
-              Manage days <ArrowRight size={13} className="ml-1 inline" />
+              Manage days <ArrowRight size={13} className="shrink-0" />
             </button>
           </div>
           <div className="space-y-5">
@@ -676,7 +720,7 @@ export default function Dashboard({ data, navigate, notify }) {
         </section>
 
         {/* Operational Note card */}
-        <section className="relative overflow-hidden rounded-2xl bg-[#1f5548] p-6 text-[#faf5e9]">
+        <section id="section-operational-note" className="relative overflow-hidden rounded-2xl bg-[#1f5548] p-6 text-[#faf5e9]">
           <div className="absolute -right-16 -top-20 h-52 w-52 rounded-full border-[22px] border-[#e3a84b]/20" />
           <div className="relative">
             <div className="mb-8 flex h-11 w-11 items-center justify-center rounded-xl bg-[#e3a84b] text-[#183f35]">
@@ -696,15 +740,15 @@ export default function Dashboard({ data, navigate, notify }) {
               onClick={() => navigate('/audit-logs')}
               className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-[#f2cc7b] hover:text-white"
             >
-              Review audit trail <ArrowRight size={15} />
+              Review audit trail <ArrowRight size={15} className="shrink-0" />
             </button>
           </div>
         </section>
       </div>
 
       {/* Recent Bookings Table (Powered by API 27) */}
-      <section className="card-surface rounded-2xl p-5 sm:p-6">
-        <div className="mb-5 flex items-center justify-between">
+      <section id="section-recent-bookings" className="card-surface rounded-2xl p-5 sm:p-6">
+        <div className="mb-5 flex items-center justify-between gap-3">
           <div>
             <p className="kicker">Activity</p>
             <h3 className="mt-1 font-display text-xl font-extrabold tracking-[-.03em] text-[#183f35] dark:text-[#edf6f2]">
@@ -714,9 +758,9 @@ export default function Dashboard({ data, navigate, notify }) {
           <button
             data-testid="link-all-bookings"
             onClick={() => navigate('/bookings')}
-            className="text-xs font-bold text-[#246b59] dark:text-[#52c99a] hover:underline"
+            className="inline-flex shrink-0 items-center gap-1 text-xs font-bold whitespace-nowrap text-[#246b59] hover:underline dark:text-[#52c99a]"
           >
-            View all <ArrowRight size={13} className="ml-1 inline" />
+            View all <ArrowRight size={13} className="shrink-0" />
           </button>
         </div>
         <BookingsTable

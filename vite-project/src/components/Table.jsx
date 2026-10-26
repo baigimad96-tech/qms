@@ -1,13 +1,13 @@
 import React from 'react';
 import { Search } from 'lucide-react';
 
-export function TableScroll({ children }) {
-  return <div className="table-scroll">{children}</div>;
+export function TableScroll({ children, className = '' }) {
+  return <div className={`table-scroll max-w-full ${className}`}>{children}</div>;
 }
 
-export function Th({ children }) {
+export function Th({ children, className = '' }) {
   return (
-    <th className="whitespace-nowrap pb-3 pr-5 text-[10px] font-bold uppercase tracking-[.13em] text-[#8a948e] dark:text-[#789d8e]">
+    <th className={`whitespace-nowrap pb-3 pr-5 text-[10px] font-bold uppercase tracking-[.13em] text-[#8a948e] dark:text-[#789d8e] ${className}`}>
       {children}
     </th>
   );

@@ -13,6 +13,7 @@ import {
   Sun,
   Moon,
   Lock,
+  Loader2,
 } from 'lucide-react';
 import { BrandMark } from '../components/Sidebar.jsx';
 import { Field } from '../components/Modal.jsx';
@@ -67,6 +68,7 @@ export default function ResetPassword({ navigate, notify }) {
   ];
 
   const onSubmit = async (data) => {
+    if (loading) return;
     setError('');
 
     if (data.newPassword !== data.confirmPassword) {
@@ -86,6 +88,14 @@ export default function ResetPassword({ navigate, notify }) {
     }
 
     setLoading(true);
+    const startTime = Date.now();
+
+    const ensureMinLoadingTime = async (minMs = 750) => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed < minMs) {
+        await new Promise((resolve) => setTimeout(resolve, minMs - elapsed));
+      }
+    };
 
     try {
       const payload = {
@@ -95,6 +105,7 @@ export default function ResetPassword({ navigate, notify }) {
       };
 
       const res = await resetPassword(payload);
+      await ensureMinLoadingTime(600);
 
       if (res?.success) {
         setIsSuccess(true);
@@ -106,6 +117,7 @@ export default function ResetPassword({ navigate, notify }) {
       }
     } catch (err) {
       console.error('Reset password error:', err);
+      await ensureMinLoadingTime(750);
       const resData = err.response?.data;
       if (resData?.data && typeof resData.data === 'object') {
         Object.keys(resData.data).forEach((key) => {
@@ -177,30 +189,34 @@ export default function ResetPassword({ navigate, notify }) {
                   Reset password
                 </h2>
                 <p className="mt-3 leading-7 text-[#66766d] dark:text-[#8ba79b]">
-                  Please enter your reset token and configure your new secure password.
+                  Please enter your verification code and configure your new secure password.
                 </p>
               </div>
 
               <form onSubmit={handleSubmit(onSubmit)} className="card-surface rounded-2xl p-6 sm:p-8 space-y-4">
-                <Field label="Reset Token">
+                <Field label="Verification / Reset Code">
                   <input
                     data-testid="input-reset-token"
                     type="text"
                     maxLength={200}
                     {...register('token', {
-                      required: 'Reset token is required',
-                      maxLength: { value: 200, message: 'Reset token is invalid' },
+                      required: 'Verification or reset code is required',
+                      maxLength: { value: 200, message: 'Verification code is invalid' },
                     })}
                     className="input font-mono text-sm"
-                    placeholder="Paste reset token here"
+                    placeholder="Enter verification code"
                     disabled={loading}
                   />
                   {formErrors.token && (
                     <div className="mt-1 text-sm text-[#a63f32]">{formErrors.token.message}</div>
                   )}
-                  {tokenFromUrl && (
+                  {tokenFromUrl ? (
                     <p className="mt-1 text-xs text-[#246b59] dark:text-[#68caa4] flex items-center gap-1 font-medium">
-                      <Check size={13} /> Token prefilled from your reset link
+                      <Check size={13} /> Code pre-filled from your reset link
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-[#7b867e] dark:text-[#8ba79b]">
+                      Enter the verification code sent to your email, or click the link in your email.
                     </p>
                   )}
                 </Field>
@@ -310,7 +326,10 @@ export default function ResetPassword({ navigate, notify }) {
                   disabled={loading}
                 >
                   {loading ? (
-                    'Resetting password...'
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 size={17} className="animate-spin" />
+                      <span>Resetting password...</span>
+                    </span>
                   ) : (
                     <>
                       Reset password <ArrowRight size={17} />

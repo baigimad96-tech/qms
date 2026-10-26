@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { ArrowRight, ArrowLeft, ShieldCheck, CheckCircle2, Sun, Moon, KeyRound, AlertTriangle } from 'lucide-react';
+import { ArrowRight, ArrowLeft, ShieldCheck, CheckCircle2, Sun, Moon, KeyRound, AlertTriangle, Loader2 } from 'lucide-react';
 import { BrandMark } from '../components/Sidebar.jsx';
 import { Field } from '../components/Modal.jsx';
 import { requestPasswordReset } from '../services/authApi.js';
@@ -29,6 +29,7 @@ export default function ForgotPassword({ navigate, notify }) {
   const emailSuggestion = suggestEmail(watchedEmail);
 
   const onSubmit = async (data) => {
+    if (loading) return;
     setError('');
 
     // Check for domain typos before submitting
@@ -39,9 +40,18 @@ export default function ForgotPassword({ navigate, notify }) {
     }
 
     setLoading(true);
+    const startTime = Date.now();
+
+    const ensureMinLoadingTime = async (minMs = 750) => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed < minMs) {
+        await new Promise((resolve) => setTimeout(resolve, minMs - elapsed));
+      }
+    };
 
     try {
       const res = await requestPasswordReset(data.email.trim());
+      await ensureMinLoadingTime(600);
       if (res?.success) {
         setSubmittedEmail(data.email.trim());
         setIsSuccess(true);
@@ -53,6 +63,7 @@ export default function ForgotPassword({ navigate, notify }) {
       }
     } catch (err) {
       console.error('Forgot password error:', err);
+      await ensureMinLoadingTime(750);
       const resData = err.response?.data;
       if (resData?.data && typeof resData.data === 'object') {
         Object.keys(resData.data).forEach((key) => {
@@ -211,7 +222,10 @@ export default function ForgotPassword({ navigate, notify }) {
                   disabled={loading}
                 >
                   {loading ? (
-                    'Sending reset link...'
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 size={17} className="animate-spin" />
+                      <span>Sending reset link...</span>
+                    </span>
                   ) : (
                     <>
                       Send reset link <ArrowRight size={17} />
@@ -244,29 +258,41 @@ export default function ForgotPassword({ navigate, notify }) {
                 If an account exists for <span className="font-bold text-[#183f35] dark:text-[#edf6f2]">{submittedEmail}</span>, a password reset link has been dispatched.
               </p>
 
-              <div className="mt-6 rounded-xl border border-[#d8d0c0] bg-[#f8f5ee] p-4 text-left text-xs text-[#5f6f65] dark:border-[#22483d] dark:bg-[#152e25] dark:text-[#9bb7ab]">
-                <p className="font-semibold text-[#183f35] dark:text-[#edf6f2] mb-1">
-                  Received a reset token?
+              <div className="mt-5 rounded-xl border border-[#d8d0c0] bg-[#f8f5ee] p-4 text-left text-xs text-[#5f6f65] dark:border-[#22483d] dark:bg-[#152e25] dark:text-[#9bb7ab] space-y-1.5">
+                <p className="font-semibold text-[#183f35] dark:text-[#edf6f2]">
+                  Next steps & delivery tips:
                 </p>
-                <p>
-                  You can enter your token directly to set a new password, or click the link in your email.
-                </p>
+                <ul className="list-disc pl-4 space-y-1 text-[#66766d] dark:text-[#8ba79b]">
+                  <li>Check your <strong>Inbox</strong>, <strong>Spam</strong>, or <strong>Junk</strong> folders if the message doesn't appear right away.</li>
+                  <li>Click the link inside the email, or enter the verification code directly below.</li>
+                </ul>
               </div>
 
               <div className="mt-6 flex flex-col gap-3">
                 <button
                   type="button"
+                  data-testid="button-enter-reset-code"
                   onClick={() => navigate('/reset-password')}
                   className="btn-primary w-full justify-center py-3.5"
                 >
-                  <KeyRound size={17} /> Enter reset token
+                  <KeyRound size={17} /> Enter verification code
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSuccess(false);
+                    setError('');
+                  }}
+                  className="btn-secondary w-full justify-center py-3"
+                >
+                  Didn't receive email? Try again
                 </button>
                 <button
                   type="button"
                   onClick={() => navigate('/login')}
-                  className="btn-secondary w-full justify-center py-3.5"
+                  className="inline-flex items-center justify-center gap-1.5 text-sm font-semibold text-[#66766d] hover:text-[#183f35] dark:text-[#8ba79b] dark:hover:text-[#edf6f2] pt-1"
                 >
-                  <ArrowLeft size={16} /> Back to sign in
+                  <ArrowLeft size={15} /> Back to sign in
                 </button>
               </div>
             </div>
