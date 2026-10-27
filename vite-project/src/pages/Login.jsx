@@ -234,7 +234,11 @@ export default function Login({ onSuccess, navigate, notify }) {
                 <input
                   data-testid="input-password"
                   type={showPassword ? "text" : "password"}
-                  {...register('password', { required: 'Password is required' })}
+                  maxLength={64}
+                  {...register('password', {
+                    required: 'Password is required',
+                    maxLength: { value: 64, message: 'Password cannot exceed 64 characters' },
+                  })}
                   className="input pr-10"
                   placeholder="••••••••"
                   disabled={loading}

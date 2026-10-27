@@ -137,7 +137,7 @@ export function generateBrandedReceiptPdf(booking) {
     }
   }
 
-  const receiptNumber = booking.receiptNumber || String(booking.hissaBookingId || booking.id);
+  const receiptNumber = String(booking.receiptNumber || booking.hissaBookingId || booking.id).replace(/^#/, '');
   const personName =
     typeof booking.qurbaniPersonName === 'string' && booking.qurbaniPersonName.trim()
       ? booking.qurbaniPersonName.trim()
@@ -325,7 +325,8 @@ export async function downloadReceipt(booking) {
     throw new Error('No booking specified.');
   }
 
-  const filename = `${booking.receiptNumber || `QB-${booking.hissaBookingId || booking.id}`}.pdf`;
+  const cleanReceipt = String(booking.receiptNumber || `QB-${booking.hissaBookingId || booking.id}`).replace(/^#/, '');
+  const filename = `${cleanReceipt}.pdf`;
 
   try {
     const doc = generateBrandedReceiptPdf(booking);

@@ -20,7 +20,7 @@ import {
   HeartHandshake,
   CheckCircle2,
 } from 'lucide-react';
-import StatCard from '../components/StatCard.jsx';
+import StatCard, { getConsistentFontSize } from '../components/StatCard.jsx';
 import Badge from '../components/Badge.jsx';
 import { TableScroll, Th, Td, IconButton } from '../components/Table.jsx';
 import { formatNumber, formatMoney, formatShortDate, formatDateTime } from '../data/mockData.js';
@@ -139,7 +139,7 @@ export function BookingsTable({
               (String(deletingId) === String(b.hissaBookingId) ||
                 String(deletingId) === String(b.id));
 
-            const displayId = b.receiptNumber || String(b.hissaBookingId || b.id || '');
+            const displayId = String(b.receiptNumber || b.hissaBookingId || b.id || '').replace(/^#/, '');
             const personName = b.personName || b.qurbaniPersonName || 'Anonymous';
             const animalName =
               (typeof b.animal === 'string' && b.animal.trim()) ||
@@ -170,7 +170,7 @@ export function BookingsTable({
               >
                 <Td>
                   <span className="font-mono text-xs font-bold text-[#246b59] dark:text-[#52c99a]">
-                    {b.receiptNumber || '—'}
+                    {b.receiptNumber ? String(b.receiptNumber).replace(/^#/, '') : (b.id ? String(b.id).replace(/^#/, '') : '—')}
                   </span>
                 </Td>
                 <Td>
@@ -260,10 +260,12 @@ export default function Dashboard({ data, navigate, notify }) {
   const [downloadingId, setDownloadingId] = useState(null);
 
   const handleDownloadReceipt = async (booking) => {
+    if (!booking) return;
     const targetId = booking.hissaBookingId || booking.id;
+    const receiptCode = String(booking.receiptNumber || booking.bookingId || booking.id || targetId || '').replace(/^#/, '');
     try {
       setDownloadingId(targetId);
-      notify?.(`Generating PDF receipt for ${booking.receiptNumber || `#${targetId}`}...`, 'info');
+      notify?.(`Generating PDF receipt for ${receiptCode}...`, 'info');
       const filename = await downloadReceipt(booking);
       notify?.(`Receipt ${filename} downloaded successfully!`, 'success');
     } catch (err) {
@@ -348,33 +350,42 @@ export default function Dashboard({ data, navigate, notify }) {
             : Array.isArray(baselineData?.content)
             ? baselineData.content
             : [];
-          const normalizedRecent = raw.map((b) => ({
-            ...b,
-            id: b.receiptNumber || String(b.hissaBookingId || b.id),
-            receiptNumber:
-              b.receiptNumber ||
-              baselineBookings.find(
-                (booking) =>
-                  String(booking.hissaBookingId || booking.id) ===
-                  String(b.hissaBookingId || b.bookingId || b.id)
-              )?.receiptNumber,
-            bookingId: b.hissaBookingId || b.id,
-            hissaBookingId: b.hissaBookingId || b.id,
-            personName: b.qurbaniPersonName || b.personName || 'Anonymous',
-            animal: (
-              typeof b.animal === 'object' && b.animal !== null
-                ? b.animal.animalType || b.animal.animal_type || b.animal.name || b.animal.type || 'Buffalo'
-                : typeof b.animalType === 'object' && b.animalType !== null
-                ? b.animalType.animalType || b.animalType.animal_type || b.animalType.name || 'Buffalo'
-                : b.animalType || b.animal || 'Buffalo'
-            ),
-            day: typeof b.qurbaniDay === 'number' ? `Day ${b.qurbaniDay}` : (b.day || `Day ${b.qurbaniDayId || 1}`),
-            hissa: b.totalHissa !== undefined ? b.totalHissa : (b.hissa || 1),
-            cost: b.totalHissaCost !== undefined ? b.totalHissaCost : (b.cost || 0),
-            meatWanted: typeof b.meatWanted === 'boolean' ? (b.meatWanted ? 'Yes' : 'No') : (b.meatWanted || 'Yes'),
-            bookedBy: b.bookedByAdminName || b.bookedBy || 'System Administrator',
-            createdAt: b.createdAt || new Date().toISOString(),
-          }));
+          const normalizedRecent = raw.map((b) => {
+            const rawReceipt = b.receiptNumber ? String(b.receiptNumber).replace(/^#/, '') : '';
+            const matchedReceipt = baselineBookings.find(
+              (booking) =>
+                String(booking.hissaBookingId || booking.id) ===
+                String(b.hissaBookingId || b.bookingId || b.id)
+            )?.receiptNumber;
+            const cleanedMatched = matchedReceipt ? String(matchedReceipt).replace(/^#/, '') : '';
+            const finalReceipt =
+              rawReceipt ||
+              cleanedMatched ||
+              (b.hissaBookingId || b.id
+                ? `QB-2026-${String(b.hissaBookingId || b.id).padStart(6, '0')}`
+                : '');
+            return {
+              ...b,
+              id: finalReceipt || String(b.hissaBookingId || b.id),
+              receiptNumber: finalReceipt,
+              bookingId: b.hissaBookingId || b.id,
+              hissaBookingId: b.hissaBookingId || b.id,
+              personName: b.qurbaniPersonName || b.personName || 'Anonymous',
+              animal: (
+                typeof b.animal === 'object' && b.animal !== null
+                  ? b.animal.animalType || b.animal.animal_type || b.animal.name || b.animal.type || 'Buffalo'
+                  : typeof b.animalType === 'object' && b.animalType !== null
+                  ? b.animalType.animalType || b.animalType.animal_type || b.animalType.name || 'Buffalo'
+                  : b.animalType || b.animal || 'Buffalo'
+              ),
+              day: typeof b.qurbaniDay === 'number' ? `Day ${b.qurbaniDay}` : (b.day || `Day ${b.qurbaniDayId || 1}`),
+              hissa: b.totalHissa !== undefined ? b.totalHissa : (b.hissa || 1),
+              cost: b.totalHissaCost !== undefined ? b.totalHissaCost : (b.cost || 0),
+              meatWanted: typeof b.meatWanted === 'boolean' ? (b.meatWanted ? 'Yes' : 'No') : (b.meatWanted || 'Yes'),
+              bookedBy: b.bookedByAdminName || b.bookedBy || 'System Administrator',
+              createdAt: b.createdAt || new Date().toISOString(),
+            };
+          });
           setRecentBookingsList(normalizedRecent);
         }
       }
@@ -419,12 +430,18 @@ export default function Dashboard({ data, navigate, notify }) {
           ? rawBkData.content
           : [];
         if (rawBk.length > 0) {
-          const normalized = rawBk.map((b) => ({
-            ...b,
-            id: b.receiptNumber || String(b.hissaBookingId || b.id),
-            receiptNumber: b.receiptNumber,
-            bookingId: b.hissaBookingId || b.id,
-            hissaBookingId: b.hissaBookingId || b.id,
+          const normalized = rawBk.map((b) => {
+            const bookingId = b.hissaBookingId || b.id;
+            const rawReceipt = b.receiptNumber ? String(b.receiptNumber).replace(/^#/, '') : '';
+            const finalReceipt =
+              rawReceipt ||
+              (bookingId ? `QB-2026-${String(bookingId).padStart(6, '0')}` : String(b.id || '').replace(/^#/, ''));
+            return {
+              ...b,
+              id: finalReceipt || String(bookingId),
+              receiptNumber: finalReceipt,
+              bookingId: bookingId,
+              hissaBookingId: bookingId,
             personName: b.qurbaniPersonName || b.personName || 'Anonymous',
             animal: (
               typeof b.animal === 'object' && b.animal !== null
@@ -439,7 +456,8 @@ export default function Dashboard({ data, navigate, notify }) {
             meatWanted: typeof b.meatWanted === 'boolean' ? (b.meatWanted ? 'Yes' : 'No') : (b.meatWanted || 'Yes'),
             bookedBy: b.bookedByAdminName || b.bookedBy || 'System Administrator',
             createdAt: b.createdAt || new Date().toISOString(),
-          }));
+          };
+        });
           setBookings(normalized);
         }
       }
@@ -582,11 +600,16 @@ export default function Dashboard({ data, navigate, notify }) {
       />
 
       {/* Top 5 KPI Cards (Powered by APIs 22, 23, 26) */}
-      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {stats.map((stat, i) => (
-          <StatCard key={stat.label} {...stat} delay={i} />
-        ))}
-      </div>
+      {(() => {
+        const sharedCardFontSize = getConsistentFontSize(stats.map((s) => s.value));
+        return (
+          <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            {stats.map((stat, i) => (
+              <StatCard key={stat.label} {...stat} delay={i} valueClassName={sharedCardFontSize} />
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Analytics Insights: Revenue by Animal Type (API 26) & Meat Distribution (API 25) */}
       <div className="mb-8 grid gap-6 md:grid-cols-2">
@@ -615,7 +638,7 @@ export default function Dashboard({ data, navigate, notify }) {
             <p
               data-testid="text-total-booking-revenue"
               title={formatMoney(totalRevenue)}
-              className="font-mono text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-[#183f35] dark:text-[#52c99a] break-words [overflow-wrap:anywhere]"
+              className="font-display text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-[-.045em] tabular-nums text-[#183f35] dark:text-[#52c99a] break-words [overflow-wrap:anywhere]"
             >
               {formatMoney(totalRevenue)}
             </p>
@@ -667,7 +690,7 @@ export default function Dashboard({ data, navigate, notify }) {
                   <CheckCircle2 size={14} />
                   <span>Takeaway</span>
                 </div>
-                <p className="mt-1 text-2xl font-black text-[#183f35] dark:text-[#edf6f2]">
+                <p className="mt-1 font-display text-xl sm:text-2xl font-extrabold tracking-[-.045em] tabular-nums text-[#183f35] dark:text-[#edf6f2] truncate">
                   {formatNumber(meatWantedCount)}
                 </p>
                 <p className="text-[11px] text-[#526359] dark:text-[#92b1a3]">Pack & dispatch to person</p>
@@ -678,7 +701,7 @@ export default function Dashboard({ data, navigate, notify }) {
                   <HeartHandshake size={14} />
                   <span>Donated / Left</span>
                 </div>
-                <p className="mt-1 text-2xl font-black text-[#78350f] dark:text-[#fef3c7]">
+                <p className="mt-1 font-display text-xl sm:text-2xl font-extrabold tracking-[-.045em] tabular-nums text-[#78350f] dark:text-[#fef3c7] truncate">
                   {formatNumber(meatNotWantedCount)}
                 </p>
                 <p className="text-[11px] text-[#92400e] dark:text-[#fde68a]">Allocated for charity / trust</p>

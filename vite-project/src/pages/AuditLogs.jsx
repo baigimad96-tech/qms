@@ -18,7 +18,7 @@ import {
   User,
 } from 'lucide-react';
 import { PageIntro } from './Dashboard.jsx';
-import StatCard from '../components/StatCard.jsx';
+import StatCard, { getConsistentFontSize } from '../components/StatCard.jsx';
 import { TableScroll, Th, Td, EmptyState } from '../components/Table.jsx';
 import ProjectDropdown from '../components/ProjectDropdown.jsx';
 import Modal, { ModalActions } from '../components/Modal.jsx';
@@ -223,18 +223,8 @@ export function formatEntityDisplayId(rawId) {
   const str = String(rawId).trim();
   if (!str) return '—';
 
-  // If already starting with #
-  if (str.startsWith('#')) return str;
-
-  // Custom codes or prefixed IDs like QB-2026-000038, BUF-2025-01, EXP-001, Day 1
-  if (/^[A-Za-z]+[-_\s]/.test(str)) {
-    return str;
-  }
-
-  // Numeric ID
-  if (/^\d+$/.test(str)) {
-    return `#${str}`;
-  }
+  // Strip leading # if present
+  if (str.startsWith('#')) return str.replace(/^#+/, '');
 
   return str;
 }
@@ -367,7 +357,7 @@ function AuditDetailModal({ audit, onClose }) {
 
   const id = audit.auditId || audit.id;
   const admin =
-    audit.adminName || (audit.adminId ? `Admin #${audit.adminId}` : audit.admin || 'System');
+    audit.adminName || (audit.adminId ? `Admin ${audit.adminId}` : audit.admin || 'System');
   const timestamp = audit.createdAt || audit.at;
   const action = String(audit.action || '').toUpperCase();
 
@@ -392,7 +382,7 @@ function AuditDetailModal({ audit, onClose }) {
 
   return (
     <Modal
-      title={`Audit Event #${id}`}
+      title={`Audit Event ${id}`}
       description="Complete event details, administrator attribution, and entity state records."
       onClose={onClose}
     >
@@ -436,7 +426,7 @@ function AuditDetailModal({ audit, onClose }) {
               </p>
               {audit.adminId && (
                 <p className="mt-0.5 text-[10px] text-[#8a948e] dark:text-[#698d80]">
-                  Admin ID: #{audit.adminId}
+                  Admin ID: {audit.adminId}
                 </p>
               )}
             </div>
@@ -462,7 +452,7 @@ function AuditDetailModal({ audit, onClose }) {
                 Audit Record ID
               </p>
               <p className="mt-1 font-mono font-bold text-[#246b59] dark:text-[#4ade80]">
-                #{id}
+                {id}
               </p>
               <p className="mt-0.5 text-[10px] text-[#8a948e] dark:text-[#698d80]">
                 Immutable Security Trail
@@ -593,22 +583,6 @@ function AuditDetailModal({ audit, onClose }) {
 }
 
 export default function AuditLogs({ data }) {
-  // Responsive screen detection for search placeholder
-  const [windowWidth, setWindowWidth] = useState(
-    typeof window !== 'undefined' ? window.innerWidth : 1024
-  );
-
-  useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  const searchPlaceholder =
-    windowWidth < 360
-      ? 'Search ID, admin, action...'
-      : 'Search audit ID, admin, action...';
-
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [entityFilter, setEntityFilter] = useState('All');
@@ -853,40 +827,54 @@ export default function AuditLogs({ data }) {
       </div>
 
       {/* KPI Stats Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Total Audited Events"
-          value={String(totalElements)}
-          sub="Recorded lifecycle mutations"
-          icon={Activity}
-          color="gold"
-          delay={0}
-        />
-        <StatCard
-          label="Distinct Actions"
-          value={String(actionOptions.length - 1)}
-          sub="Operation classifications"
-          icon={Database}
-          color="green"
-          delay={1}
-        />
-        <StatCard
-          label="Active Admins"
-          value={String(Math.max(adminUsers.length, 1))}
-          sub="Attributed operators"
-          icon={Users}
-          color="teal"
-          delay={2}
-        />
-        <StatCard
-          label="Filtered Records"
-          value={String(filteredLogs.length)}
-          sub={`Page ${currentPage + 1} of ${totalPages}`}
-          icon={Layers}
-          color="orange"
-          delay={3}
-        />
-      </div>
+      {(() => {
+        const val1 = String(totalElements);
+        const val2 = String(actionOptions.length - 1);
+        const val3 = String(Math.max(adminUsers.length, 1));
+        const val4 = String(filteredLogs.length);
+        const sharedCardFontSize = getConsistentFontSize([val1, val2, val3, val4]);
+
+        return (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              label="Total Audited Events"
+              value={val1}
+              sub="Recorded lifecycle mutations"
+              icon={Activity}
+              color="gold"
+              delay={0}
+              valueClassName={sharedCardFontSize}
+            />
+            <StatCard
+              label="Distinct Actions"
+              value={val2}
+              sub="Operation classifications"
+              icon={Database}
+              color="green"
+              delay={1}
+              valueClassName={sharedCardFontSize}
+            />
+            <StatCard
+              label="Active Admins"
+              value={val3}
+              sub="Attributed operators"
+              icon={Users}
+              color="teal"
+              delay={2}
+              valueClassName={sharedCardFontSize}
+            />
+            <StatCard
+              label="Filtered Records"
+              value={val4}
+              sub={`Page ${currentPage + 1} of ${totalPages}`}
+              icon={Layers}
+              color="orange"
+              delay={3}
+              valueClassName={sharedCardFontSize}
+            />
+          </div>
+        );
+      })()}
 
       {/* Main Table Card */}
       <section className="card-surface relative overflow-hidden rounded-2xl p-5 sm:p-6">
@@ -927,13 +915,13 @@ export default function AuditLogs({ data }) {
           <div className="relative w-full sm:w-80 md:w-88">
             <Search
               size={15}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8a948e] dark:text-[#698d80]"
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8a948e] dark:text-[#698d80]"
             />
             <input
               type="text"
-              placeholder={searchPlaceholder}
-              title={searchPlaceholder}
-              className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-9 pr-8 text-xs font-medium placeholder:text-[11px] sm:placeholder:text-xs placeholder:truncate truncate !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"
+              placeholder="Search"
+              title="Search"
+              className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-10 pr-8 text-xs font-medium !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -1055,7 +1043,7 @@ export default function AuditLogs({ data }) {
                   audit.adminName ||
                   matchedAdmin?.fullName ||
                   matchedAdmin?.name ||
-                  (audit.adminId ? `Admin #${audit.adminId}` : audit.admin || 'System');
+                  (audit.adminId ? `Admin ${audit.adminId}` : audit.admin || 'System');
                 const timestamp = audit.createdAt || audit.at;
 
                 return (

@@ -10,6 +10,7 @@ export const MAX_DECIMAL_PLACES = 2; // Up to 2 decimal places (.00 to .99)
 export const MAX_HISSA_COUNT = 10000; // Max 10,000 hissas per booking
 export const MAX_HISSA_DIGITS = 5; // Max 5 digits for hissa count
 export const MAX_TOTAL_BOOKING_COST = 100000000; // ₹10,00,00,000 (₹10 Crore max total booking cost)
+export const MAX_COST_INPUT_LENGTH = MAX_COST_DIGITS + 1 + MAX_DECIMAL_PLACES; // 11 characters (8 whole digits + '.' + 2 decimal places)
 
 /**
  * Safely format calculated total amounts without layout breaking or card overflow.

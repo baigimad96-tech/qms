@@ -9,6 +9,29 @@ import { suggestEmail } from '../utils/emailTypo.js';
 import { sanitizeIndianPhone, formatIndianPhone } from '../utils/phone.js';
 import { formatToTitleCase } from '../utils/text.js';
 
+export const validateAdminPassword = (password) => {
+  if (!password) {
+    return 'Password is required.';
+  }
+  if (password.length < 8) {
+    return 'Password must be at least 8 characters long.';
+  }
+  if (password.length > 64) {
+    return 'Password cannot exceed 64 characters.';
+  }
+  if (/\s/.test(password)) {
+    return 'Password cannot contain spaces.';
+  }
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  const hasSpecial = /[^A-Za-z0-9]/.test(password);
+  if (!hasUpper || !hasLower || !hasNumber || !hasSpecial) {
+    return 'Password must contain uppercase, lowercase, number and special character.';
+  }
+  return '';
+};
+
 export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSaving }) {
   const [form, setForm] = useState({
     fullName: admin?.fullName ? formatToTitleCase(admin.fullName) : '',
@@ -19,8 +42,14 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
   const [showPassword, setShowPassword] = useState(false);
   const [nameError, setNameError] = useState('');
   const [phoneError, setPhoneError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [clearedServerPasswordError, setClearedServerPasswordError] = useState(false);
   const [emailSuggestion, setEmailSuggestion] = useState(() => suggestEmail(admin?.email || ''));
   const [emailError, setEmailError] = useState('');
+
+  useEffect(() => {
+    setClearedServerPasswordError(false);
+  }, [fieldErrors]);
 
   useEffect(() => {
     if (admin) {
@@ -33,9 +62,12 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
       });
       setNameError('');
       setPhoneError('');
+      setPasswordError('');
       const typo = suggestEmail(admin.email || '');
       setEmailSuggestion(typo);
       setEmailError(typo ? `Invalid email domain. Did you mean ${typo}? Please correct your email domain.` : '');
+    } else {
+      setPasswordError('');
     }
   }, [admin]);
 
@@ -110,6 +142,56 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
     }
   };
 
+  const handlePasswordChange = (e) => {
+    const val = e.target.value;
+    set('password', val);
+    setClearedServerPasswordError(true);
+    if (val.length > 64) {
+      setPasswordError('Password cannot exceed 64 characters.');
+    } else if (passwordError === 'Password cannot exceed 64 characters.') {
+      setPasswordError('');
+    } else if (passwordError && val.length >= 8 && val.length <= 64) {
+      if (passwordError === 'Password is required.' || passwordError.includes('at least 8')) {
+        setPasswordError('');
+      }
+    }
+  };
+
+  const handlePasswordKeyDown = (e) => {
+    if (
+      ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key) ||
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey
+    ) {
+      return;
+    }
+    const selectionLength = (e.target.selectionEnd || 0) - (e.target.selectionStart || 0);
+    if ((form.password || '').length >= 64 && selectionLength === 0) {
+      setPasswordError('Password cannot exceed 64 characters.');
+    }
+  };
+
+  const handlePasswordPaste = (e) => {
+    const paste = e.clipboardData?.getData('text') || '';
+    const selectionLength = (e.target.selectionEnd || 0) - (e.target.selectionStart || 0);
+    const newLength = (form.password || '').length - selectionLength + paste.length;
+    if (newLength > 64) {
+      setPasswordError('Password cannot exceed 64 characters.');
+    }
+  };
+
+  const handlePasswordBlur = () => {
+    const pwd = form.password || '';
+    if (!pwd) return;
+    const err = validateAdminPassword(pwd);
+    if (err) {
+      setPasswordError(err);
+    } else {
+      setPasswordError('');
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
 
@@ -143,6 +225,16 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
     }
     setEmailError('');
 
+    if (!admin) {
+      const pwd = form.password || '';
+      const pwdErr = validateAdminPassword(pwd);
+      if (pwdErr) {
+        setPasswordError(pwdErr);
+        return;
+      }
+      setPasswordError('');
+    }
+
     const phone = (form.phoneNumber || '').trim();
     if (!phone) {
       setPhoneError('Phone number is required.');
@@ -165,6 +257,8 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
     onSave({ ...form, fullName: formattedName, email: emailToValidate }, admin);
   };
 
+  const activePasswordError = passwordError || (!clearedServerPasswordError ? fieldErrors?.password : '');
+
   return (
     <Modal
       title={admin ? 'Edit Admin' : 'Add Admin'}
@@ -174,6 +268,7 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
       <form
         onSubmit={handleSubmit}
         className="space-y-4"
+        autoComplete="off"
       >
         {apiError && (
           <div className="rounded-xl border border-[#efb7ae] bg-[#fff3f0] px-4 py-3 text-sm text-[#a63f32]">
@@ -187,7 +282,8 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
             value={form.fullName}
             onChange={handleNameChange}
             onBlur={handleNameBlur}
-            placeholder="e.g. Mohd Uzair"
+            placeholder="Enter full name"
+            autoComplete="off"
             required
             disabled={isSaving}
           />
@@ -204,7 +300,8 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
             type="email"
             value={form.email}
             onChange={handleEmailChange}
-            placeholder="e.g. name@gmail.com"
+            placeholder="Enter email address"
+            autoComplete="off"
             required
             disabled={isSaving}
           />
@@ -245,11 +342,17 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
             <div className="relative">
               <input
                 data-testid="input-admin-password"
-                className={`input pr-10 ${fieldErrors?.password ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
+                className={`input pr-10 ${activePasswordError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
                 type={showPassword ? 'text' : 'password'}
                 value={form.password}
-                onChange={(e) => set('password', e.target.value)}
-                placeholder="••••••••"
+                minLength={8}
+                maxLength={64}
+                onChange={handlePasswordChange}
+                onKeyDown={handlePasswordKeyDown}
+                onPaste={handlePasswordPaste}
+                onBlur={handlePasswordBlur}
+                placeholder="Enter password"
+                autoComplete="new-password"
                 required
                 disabled={isSaving}
               />
@@ -265,7 +368,9 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
-            {fieldErrors?.password && <p className="mt-1 text-sm text-[#a63f32]">{fieldErrors.password}</p>}
+            {activePasswordError && (
+              <p className="mt-1 text-sm text-[#a63f32]">{activePasswordError}</p>
+            )}
           </Field>
         )}
         <Field label="Phone Number">
@@ -280,7 +385,8 @@ export function AdminModal({ admin, onClose, onSave, apiError, fieldErrors, isSa
               inputMode="numeric"
               pattern="[0-9]*"
               maxLength={10}
-              placeholder="9876543210"
+              placeholder="Enter phone number"
+              autoComplete="off"
               value={form.phoneNumber}
               onKeyDown={handlePhoneKeyDown}
               onChange={handlePhoneChange}
@@ -449,7 +555,13 @@ export default function AdminManagement({ data, patchData, notify }) {
       phoneNumber: cleanPhone,
     };
     if (!existing) {
-      payload.password = form.password;
+      const pwd = form.password || '';
+      const pwdErr = validateAdminPassword(pwd);
+      if (pwdErr) {
+        setFieldErrors({ password: pwdErr });
+        return;
+      }
+      payload.password = pwd;
     }
 
     try {
@@ -595,7 +707,7 @@ export default function AdminManagement({ data, patchData, notify }) {
             <input
               type="text"
               data-testid="input-search-admins"
-              placeholder="Search admin name, email, phone..."
+              placeholder="Search"
               aria-label="Search admin name, email, phone"
               className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-10 pr-8 text-xs font-medium !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"
               value={searchQuery}

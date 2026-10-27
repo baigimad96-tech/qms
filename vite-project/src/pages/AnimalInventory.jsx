@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Box,
   Info,
@@ -52,12 +52,12 @@ export const calculateAvailableHissa = (totalHissa, booked) => {
   return Math.max(total - bookedCount, 0);
 };
 
-// Helper to determine allowed batch year range (strictly current operating season or immediate next year)
+// Helper to determine allowed batch year range (strictly current operating season only)
 export const getBatchYearRange = (activeSeasonYear = getActiveSeasonYear()) => {
   const activeYear = Number(activeSeasonYear) || new Date().getFullYear();
   return {
     min: activeYear,
-    max: activeYear + 1,
+    max: activeYear,
     active: activeYear,
   };
 };
@@ -690,16 +690,31 @@ export function InventoryModal({
   apiError,
   isSaving,
   activeSeasonYear,
+  availableAnimalTypes,
 }) {
   const { min: minBatchYear, max: maxBatchYear, active: activeYear } = getBatchYearRange(
     activeSeasonYear || getActiveSeasonYear()
   );
 
+  const availableTypes = useMemo(() => {
+    const fromProps = Array.isArray(availableAnimalTypes)
+      ? availableAnimalTypes.map((t) => String(t || '').trim()).filter(Boolean)
+      : [];
+    const baseList = fromProps.length > 0 ? fromProps : ['Buffalo'];
+    const current = (item?.animalType || item?.animal || '').trim();
+    if (current && !baseList.some((t) => t.toLowerCase() === current.toLowerCase())) {
+      return [...baseList, current];
+    }
+    return baseList;
+  }, [availableAnimalTypes, item]);
+
+  const hasMultipleTypes = availableTypes.length > 1;
+
   const [form, setForm] = useState({
     batchYear: item?.batchYear ?? activeYear,
     totalAnimals: item?.totalAnimals ?? '',
     totalPrice: item?.totalPrice ?? '',
-    animalType: item?.animalType || item?.animal || 'Buffalo',
+    animalType: item?.animalType || item?.animal || availableTypes[0] || 'Buffalo',
   });
   const [qtyError, setQtyError] = useState(() => {
     if (item?.totalAnimals !== undefined && item?.totalAnimals !== null && item?.totalAnimals !== '') {
@@ -720,12 +735,31 @@ export function InventoryModal({
     return '';
   });
 
-  const [yearError, setYearError] = useState(() => {
-    const yr = Number(item?.batchYear ?? activeYear);
-    if (isNaN(yr) || yr < minBatchYear || yr > maxBatchYear) {
-      return `Batch year must be between ${minBatchYear} and ${maxBatchYear}.`;
+  const validateBatchYear = (val) => {
+    const str = String(val ?? '').trim();
+    if (!str) return 'Batch year is required.';
+    if (/[eE+.\-]/.test(str)) return 'Batch year must be a 4-digit whole year.';
+    if (str.length !== 4) return 'Batch year must be a 4-digit year.';
+    const y = Number(str);
+    if (isNaN(y) || !Number.isInteger(y)) return 'Batch year must be a valid whole year.';
+
+    // Allow existing historical batch if its year was not modified and not in future
+    if (item && item.batchYear !== undefined && y === Number(item.batchYear) && y <= activeYear) {
+      return '';
+    }
+
+    if (y !== activeYear) {
+      if (y > activeYear) {
+        return `Batch year cannot be in the future (${y}). Animal batch creation is restricted to the current active season (${activeYear}) only.`;
+      }
+      return `Batch year must match the current operating season (${activeYear}).`;
     }
     return '';
+  };
+
+  const [yearError, setYearError] = useState(() => {
+    const yr = item?.batchYear ?? activeYear;
+    return validateBatchYear(yr);
   });
 
   useEffect(() => {
@@ -734,15 +768,10 @@ export function InventoryModal({
         batchYear: item?.batchYear ?? activeYear,
         totalAnimals: item?.totalAnimals ?? '',
         totalPrice: item?.totalPrice ?? '',
-        animalType: item?.animalType || item?.animal || 'Buffalo',
+        animalType: item?.animalType || item?.animal || availableTypes[0] || 'Buffalo',
       });
 
-      const yr = Number(item?.batchYear ?? activeYear);
-      if (isNaN(yr) || yr < minBatchYear || yr > maxBatchYear) {
-        setYearError(`Batch year must be between ${minBatchYear} and ${maxBatchYear}.`);
-      } else {
-        setYearError('');
-      }
+      setYearError(validateBatchYear(item?.batchYear ?? activeYear));
 
       const numAnimals = Number(item?.totalAnimals);
       if (item?.totalAnimals !== undefined && item?.totalAnimals !== '' && (isNaN(numAnimals) || numAnimals < 1)) {
@@ -761,8 +790,13 @@ export function InventoryModal({
       } else {
         setCostError('');
       }
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        animalType: prev.animalType || availableTypes[0] || 'Buffalo',
+      }));
     }
-  }, [item, activeYear, minBatchYear, maxBatchYear]);
+  }, [item, activeYear, minBatchYear, maxBatchYear, availableTypes]);
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -805,7 +839,7 @@ export function InventoryModal({
       input.selectionStart !== input.selectionEnd;
     if (!hasSelection && String(form.batchYear || '').length >= 4) {
       e.preventDefault();
-      setYearError(`Batch year must be a 4-digit year between ${minBatchYear} and ${maxBatchYear}.`);
+      setYearError(`Batch year must match the current operating season (${activeYear}).`);
     }
   };
 
@@ -820,12 +854,7 @@ export function InventoryModal({
     if (!clean) return;
     e.preventDefault();
     set('batchYear', clean);
-    const y = Number(clean);
-    if (isNaN(y) || y < minBatchYear || y > maxBatchYear || clean.length !== 4) {
-      setYearError(`Batch year must be between ${minBatchYear} and ${maxBatchYear}.`);
-    } else {
-      setYearError('');
-    }
+    setYearError(validateBatchYear(clean));
   };
 
   const handleYearChange = (e) => {
@@ -846,28 +875,13 @@ export function InventoryModal({
       val = val.slice(0, 4);
     }
 
-    const y = Number(val);
-    if (isNaN(y) || y < minBatchYear || y > maxBatchYear || val.length !== 4) {
-      setYearError(`Batch year must be between ${minBatchYear} and ${maxBatchYear}.`);
-    } else {
-      setYearError('');
-    }
-
+    setYearError(validateBatchYear(val));
     set('batchYear', val);
   };
 
   const handleYearBlur = () => {
     const val = String(form.batchYear || '').trim();
-    if (!val) {
-      setYearError('Batch year is required.');
-      return;
-    }
-    const y = Number(val);
-    if (isNaN(y) || y < minBatchYear || y > maxBatchYear || val.length !== 4) {
-      setYearError(`Batch year must be between ${minBatchYear} and ${maxBatchYear}.`);
-    } else {
-      setYearError('');
-    }
+    setYearError(validateBatchYear(val));
   };
 
   const handleQuantityKeyDown = (e) => {
@@ -1090,9 +1104,8 @@ export function InventoryModal({
     !yearError &&
     !isNaN(numYear) &&
     Number.isInteger(numYear) &&
-    numYear >= minBatchYear &&
-    numYear <= maxBatchYear &&
-    yearStr.length === 4;
+    yearStr.length === 4 &&
+    validateBatchYear(numYear) === '';
 
   const isQtyValid =
     animalsStr !== '' &&
@@ -1159,28 +1172,41 @@ export function InventoryModal({
         )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Animal Type">
-            <input
-              data-testid="input-animal-type"
-              className="input"
-              list="animal-type-datalist"
-              value={form.animalType}
-              onChange={(e) => set('animalType', e.target.value)}
-              placeholder="e.g. Buffalo, Camel, Goat..."
-              disabled={isSaving}
-              required
-            />
-            <datalist id="animal-type-datalist">
-              <option value="Buffalo" />
-
-            </datalist>
+            {hasMultipleTypes ? (
+              <select
+                data-testid="input-animal-type"
+                className="input cursor-pointer"
+                value={form.animalType}
+                onChange={(e) => set('animalType', e.target.value)}
+                disabled={isSaving}
+                required
+              >
+                {availableTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                data-testid="input-animal-type"
+                type="text"
+                readOnly
+                value={form.animalType || availableTypes[0] || 'Buffalo'}
+                className="input bg-[#faf7f0] text-[#183f35] font-medium border-[#ded7c8] cursor-default focus:border-[#ded7c8] focus:ring-0 select-none dark:bg-[#122b22] dark:text-[#edf6f2] dark:border-[#21473a] dark:focus:border-[#21473a]"
+                title="Only 1 animal type is registered in the system"
+                disabled={isSaving}
+                aria-readonly="true"
+              />
+            )}
           </Field>
           <Field label="Batch Year">
             <input
               data-testid="input-batch-year"
               className={`input ${yearError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
               type="number"
-              min={minBatchYear}
-              max={maxBatchYear}
+              min={activeYear}
+              max={activeYear}
               maxLength={4}
               value={form.batchYear}
               onChange={handleYearChange}
@@ -1195,7 +1221,7 @@ export function InventoryModal({
               <p data-testid="error-batch-year" className="mt-1 text-xs font-medium text-[#a63f32] dark:text-[#fca5a5]">{yearError}</p>
             ) : (
               <p className="mt-1 text-[11px] text-[#7b867e] dark:text-[#92b1a3]">
-                Allowed range: {minBatchYear}–{maxBatchYear} (Current operating season or immediate next year)
+                Batches are restricted to the current active season ({activeYear}) only.
               </p>
             )}
           </Field>
@@ -1425,8 +1451,9 @@ export default function AnimalInventory({ data, patchData, notify }) {
   const [yearFilter, setYearFilter] = useState('All Years');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const currentYear = getActiveSeasonYear();
+  const currentYear = getActiveSeasonYear(data);
   const [knownYears, setKnownYears] = useState([currentYear]);
+  const [knownAnimalTypes, setKnownAnimalTypes] = useState([]);
 
   // Fetch all animals from GET /api/v1/animals with optional backend query parameters
   const loadAnimals = async (filterOverrides = {}) => {
@@ -1460,6 +1487,30 @@ export default function AnimalInventory({ data, patchData, notify }) {
         setKnownYears((prev) =>
           Array.from(new Set([...prev, ...animalsList.map((x) => Number(x.batchYear)).filter(Boolean)])).sort((a, b) => b - a)
         );
+      }
+
+      // Track known animal types so dropdown options don't shrink or hide unexpectedly while filtering
+      const loadedTypes = Array.from(
+        new Map(
+          animalsList
+            .map((x) => (x.animalType || x.animal || '').trim())
+            .filter(Boolean)
+            .map((t) => [t.toLowerCase(), t])
+        ).values()
+      );
+
+      if ((!activeType || activeType === 'All Types') && (!activeYear || activeYear === 'All Years')) {
+        setKnownAnimalTypes(loadedTypes);
+      } else if (loadedTypes.length > 0) {
+        setKnownAnimalTypes((prev) => {
+          const map = new Map(prev.map((t) => [t.toLowerCase(), t]));
+          loadedTypes.forEach((t) => {
+            if (!map.has(t.toLowerCase())) {
+              map.set(t.toLowerCase(), t);
+            }
+          });
+          return Array.from(map.values());
+        });
       }
 
       if (patchData) {
@@ -1501,8 +1552,7 @@ export default function AnimalInventory({ data, patchData, notify }) {
   // Extract distinct options for Custom Dropdowns
   const distinctAnimalTypes = Array.from(
     new Map(
-      inventory
-        .map((x) => (x.animalType || x.animal || '').trim())
+      [...knownAnimalTypes, ...inventory.map((x) => (x.animalType || x.animal || '').trim())]
         .filter(Boolean)
         .map((type) => [type.toLowerCase(), type])
     ).values()
@@ -1543,11 +1593,19 @@ export default function AnimalInventory({ data, patchData, notify }) {
       setApiError(errText);
       return notify?.(errText, 'error');
     }
-    const { min: minBatchYear, max: maxBatchYear } = getBatchYearRange(currentYear);
     const year = Number(yearStr);
-    if (!year || isNaN(year) || year < minBatchYear || year > maxBatchYear || yearStr.length !== 4) {
+    const isExistingHistorical =
+      existing &&
+      existing.batchYear !== undefined &&
+      year === Number(existing.batchYear) &&
+      year <= currentYear;
+
+    if (!year || isNaN(year) || yearStr.length !== 4 || (!isExistingHistorical && year !== currentYear)) {
       setIsSaving(false);
-      const errText = `Batch year must be between ${minBatchYear} and ${maxBatchYear}.`;
+      const errText =
+        year > currentYear
+          ? `Batch year cannot be in the future (${year}). Animal batch creation is restricted to the current active season (${currentYear}) only.`
+          : `Batch year must match the current operating season (${currentYear}).`;
       setApiError(errText);
       return notify?.(errText, 'error');
     }
@@ -1850,10 +1908,11 @@ export default function AnimalInventory({ data, patchData, notify }) {
             />
             <input
               type="text"
-              placeholder="Search by type, year..."
+              placeholder="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-10 pr-8 text-xs font-medium !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"            />
+              className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-10 pr-8 text-xs font-medium !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"
+            />
             {searchQuery && (
               <button
                 type="button"
@@ -1865,27 +1924,21 @@ export default function AnimalInventory({ data, patchData, notify }) {
             )}
           </div>
 
-          {/* Animal type dropdown */}
-          <ProjectDropdown
-            value={typeFilter}
-            onChange={(newType) => {
-              setTypeFilter(newType);
-              loadAnimals({ typeFilter: newType, yearFilter });
-            }}
-            options={typeOptions}
-            icon={Layers}
-            testId="dropdown-filter-type"
-            placeholder="Filter by animal type"
-            placeholderValue="All Types"
-            disabled={!hasMultipleTypes}
-            title={
-              !hasMultipleTypes
-                ? distinctAnimalTypes.length === 1
-                  ? `Filtering disabled: only 1 animal type (${distinctAnimalTypes[0]}) is registered in inventory`
-                  : 'Filter disabled until multiple animal types are registered'
-                : undefined
-            }
-          />
+          {/* Animal type dropdown - only shown when multiple animal types exist */}
+          {hasMultipleTypes && (
+            <ProjectDropdown
+              value={typeFilter}
+              onChange={(newType) => {
+                setTypeFilter(newType);
+                loadAnimals({ typeFilter: newType, yearFilter });
+              }}
+              options={typeOptions}
+              icon={Layers}
+              testId="dropdown-filter-type"
+              placeholder="Filter by animal type"
+              placeholderValue="All Types"
+            />
+          )}
 
           {/* Batch year dropdown */}
           <ProjectDropdown
@@ -1948,6 +2001,7 @@ export default function AnimalInventory({ data, patchData, notify }) {
           apiError={apiError}
           isSaving={isSaving}
           activeSeasonYear={currentYear}
+          availableAnimalTypes={distinctAnimalTypes}
         />
       )}
 

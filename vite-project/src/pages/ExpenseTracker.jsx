@@ -23,7 +23,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { PageIntro } from './Dashboard.jsx';
-import StatCard from '../components/StatCard.jsx';
+import StatCard, { getConsistentFontSize } from '../components/StatCard.jsx';
 import { TableScroll, Th, Td, EmptyState } from '../components/Table.jsx';
 import ProjectDropdown from '../components/ProjectDropdown.jsx';
 import Modal, { ModalActions, Field } from '../components/Modal.jsx';
@@ -584,7 +584,7 @@ function ExpenseDetailModal({ expense, qurbaniDays = [], onClose, onEdit }) {
   const dayInfo = expense.qurbaniDayId
     ? qurbaniDays.find((d) => (d.qurbaniDayId || d.id) === expense.qurbaniDayId)?.name ||
       `Day ${expense.qurbaniDayId}`
-    : 'General Overhead';
+    : 'General Expense';
 
   return (
     <Modal
@@ -1012,7 +1012,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
         <PageIntro
           eyebrow="Financial Operations"
           title="Expense Tracker"
-          description="Log and categorize operational expenditures, allocate costs to Qurbani Days, and track financial outflows."
+          description="Track and categorize expenses, allocate costs to Qurbani days, and monitor spending."
           icon={ReceiptIndianRupee}
         />
         <div className="flex flex-wrap items-center gap-2.5 sm:self-start">
@@ -1042,44 +1042,63 @@ export default function ExpenseTracker({ data, patchData, notify }) {
       </div>
 
       {/* KPI Stats Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Total Operational Outflow"
-          value={`₹${formatNumber(activeSummary.totalExpense)}`}
-          sub={hasActiveFilters ? 'Sum of filtered expenses' : 'Sum of all recorded expenses'}
-          icon={ReceiptIndianRupee}
-          color="gold"
-          delay={0}
-        />
-        <StatCard
-          label="Day-Specific Expenses"
-          value={`₹${formatNumber(activeSummary.qurbaniDayExpense)}`}
-          sub={hasActiveFilters ? 'Sum of filtered day expenses' : 'Sum of day-allocated expenses'}
-          icon={CalendarDays}
-          color="green"
-          delay={1}
-        />
-        <StatCard
-          label="General Overhead"
-          value={`₹${formatNumber(activeSummary.generalExpense)}`}
-          sub={hasActiveFilters ? 'Sum of filtered overhead expenses' : 'Sum of general overhead expenses'}
-          icon={TrendingDown}
-          color="teal"
-          delay={2}
-        />
-        <StatCard
-          label="Total Ledger Records"
-          value={formatNumber(filteredExpenses.length)}
-          sub={
-            hasActiveFilters
-              ? `${filteredExpenses.length} of ${expenses.length} records shown`
-              : 'Count of all expense records'
-          }
-          icon={Layers}
-          color="orange"
-          delay={3}
-        />
-      </div>
+      {(() => {
+        const totalExpenseDisplay = `₹${formatNumber(activeSummary.totalExpense)}`;
+        const dayExpenseDisplay = `₹${formatNumber(activeSummary.qurbaniDayExpense)}`;
+        const generalExpenseDisplay = `₹${formatNumber(activeSummary.generalExpense)}`;
+        const recordsDisplay = formatNumber(filteredExpenses.length);
+        const sharedCardFontSize = getConsistentFontSize([
+          totalExpenseDisplay,
+          dayExpenseDisplay,
+          generalExpenseDisplay,
+          recordsDisplay,
+        ]);
+
+        return (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              label="Total Expenses"
+              value={totalExpenseDisplay}
+              sub={hasActiveFilters ? 'Filtered expenses total' : 'All recorded expenses'}
+              icon={ReceiptIndianRupee}
+              color="gold"
+              delay={0}
+              valueClassName={sharedCardFontSize}
+            />
+            <StatCard
+              label="Day Expenses"
+              value={dayExpenseDisplay}
+              sub={hasActiveFilters ? 'Filtered day expenses' : 'Allocated to Qurbani days'}
+              icon={CalendarDays}
+              color="green"
+              delay={1}
+              valueClassName={sharedCardFontSize}
+            />
+            <StatCard
+              label="General Expenses"
+              value={generalExpenseDisplay}
+              sub={hasActiveFilters ? 'Filtered general expenses' : 'General operational costs'}
+              icon={TrendingDown}
+              color="teal"
+              delay={2}
+              valueClassName={sharedCardFontSize}
+            />
+            <StatCard
+              label="Total Records"
+              value={recordsDisplay}
+              sub={
+                hasActiveFilters
+                  ? `${filteredExpenses.length} of ${expenses.length} records shown`
+                  : 'All expense records'
+              }
+              icon={Layers}
+              color="orange"
+              delay={3}
+              valueClassName={sharedCardFontSize}
+            />
+          </div>
+        );
+      })()}
 
       {/* Main Card with Filter Toolbar & Table */}
       <section className="card-surface rounded-2xl p-5 sm:p-6">
@@ -1109,7 +1128,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
             />
             <input
               type="text"
-              placeholder="Search description or category..."
+              placeholder="Search"
               className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-10 pr-8 text-xs font-medium !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
