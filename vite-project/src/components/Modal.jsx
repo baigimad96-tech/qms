@@ -1,15 +1,101 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
-export default function Modal({ title, description, onClose, children }) {
+// Stack of active modals for managing browser back navigation
+const modalStack = [];
+let programmaticPopCount = 0;
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('popstate', () => {
+    if (programmaticPopCount > 0) {
+      programmaticPopCount--;
+      return;
+    }
+
+    if (modalStack.length > 0) {
+      const topModal = modalStack.pop();
+      topModal.isPopped = true;
+      topModal.onClose?.();
+    }
+  });
+}
+
+export default function Modal({
+  title,
+  description,
+  onClose,
+  children,
+  closeOnBack = true,
+}) {
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onCloseRef.current?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
     return () => {
       document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  useEffect(() => {
+    if (!closeOnBack || typeof window === 'undefined') return;
+
+    const modalId = 'modal_' + Math.random().toString(36).slice(2, 10);
+    const modalEntry = {
+      id: modalId,
+      onClose: () => onCloseRef.current?.(),
+      isPopped: false,
+    };
+
+    modalStack.push(modalEntry);
+
+    try {
+      const currentHistoryState = window.history.state;
+      window.history.pushState(
+        {
+          ...(typeof currentHistoryState === 'object' && currentHistoryState !== null
+            ? currentHistoryState
+            : {}),
+          __modalId: modalId,
+        },
+        '',
+        window.location.href
+      );
+    } catch (err) {
+      console.warn('Failed to push modal history state:', err);
+    }
+
+    return () => {
+      const index = modalStack.indexOf(modalEntry);
+      if (index !== -1) {
+        modalStack.splice(index, 1);
+      }
+
+      if (!modalEntry.isPopped) {
+        try {
+          if (window.history.state?.__modalId === modalId) {
+            programmaticPopCount++;
+            window.history.back();
+          }
+        } catch (err) {
+          console.warn('Failed to pop modal history state:', err);
+        }
+      }
+    };
+  }, [closeOnBack]);
 
   const modalNode = (
     <div

@@ -177,7 +177,7 @@ function AppContent() {
           logout={logout}
         />
         <main className="min-w-0 flex-1">
-          <Header currentLabel={getPageTitle(page)} setMobileNav={setMobileNav} logout={logout} />
+          <Header currentLabel={getPageTitle(page)} setMobileNav={setMobileNav} logout={logout} data={data} />
           <div className="page-enter mx-auto max-w-[1500px] p-4 sm:p-6 lg:p-10">
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />

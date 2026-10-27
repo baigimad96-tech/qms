@@ -1,19 +1,35 @@
 import React from 'react';
 import { useTheme } from '../context/ThemeContext.jsx';
 
-function getValueFontSize(value) {
-  if (value === null || value === undefined) return 'text-xl sm:text-2xl';
+export const STANDARD_STAT_VALUE_FONT_SIZE = 'text-xl sm:text-2xl xl:text-xl 2xl:text-2xl';
+
+export function getConsistentFontSize(values = []) {
+  if (!values || !values.length) return STANDARD_STAT_VALUE_FONT_SIZE;
+
+  const maxLen = Math.max(
+    ...values.map((v) => {
+      if (v === null || v === undefined) return 0;
+      return String(v).trim().length;
+    })
+  );
+
+  // Scaled down uniformly across the group only for extreme lengths
+  if (maxLen > 18) {
+    return 'text-base sm:text-lg xl:text-base 2xl:text-lg';
+  }
+  return STANDARD_STAT_VALUE_FONT_SIZE;
+}
+
+export function getValueFontSize(value) {
+  if (value === null || value === undefined) return STANDARD_STAT_VALUE_FONT_SIZE;
   const str = typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
   const len = str.length;
 
-  if (len > 16) return 'text-xs sm:text-sm';
-  if (len > 12) return 'text-sm sm:text-base xl:text-sm';
-  if (len > 9) return 'text-base sm:text-lg xl:text-base';
-  if (len > 6) return 'text-lg sm:text-xl xl:text-lg';
-  return 'text-xl sm:text-2xl xl:text-xl';
+  if (len > 18) return 'text-base sm:text-lg xl:text-base 2xl:text-lg';
+  return STANDARD_STAT_VALUE_FONT_SIZE;
 }
 
-export default function StatCard({ label, value, sub, icon: Icon, color, delay, onClick }) {
+export default function StatCard({ label, value, sub, icon: Icon, color, delay, onClick, valueClassName }) {
   const { isDark } = useTheme();
 
   const lightColors = {
@@ -62,9 +78,9 @@ export default function StatCard({ label, value, sub, icon: Icon, color, delay, 
           <p
             data-testid={testId}
             title={typeof value === 'string' || typeof value === 'number' ? String(value) : undefined}
-            className={`mt-2 font-display font-extrabold tracking-[-.045em] text-[#183f35] dark:text-[#edf6f2] truncate break-words [overflow-wrap:anywhere] leading-tight ${getValueFontSize(
-              value
-            )}`}
+            className={`mt-2 font-display font-extrabold tracking-[-.045em] tabular-nums text-[#183f35] dark:text-[#edf6f2] truncate leading-tight ${
+              valueClassName || getValueFontSize(value)
+            }`}
           >
             {value}
           </p>

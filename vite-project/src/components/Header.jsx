@@ -4,7 +4,7 @@ import { getUser } from '../utils/auth.js';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { getActiveSeasonYear } from '../utils/season.js';
 
-export default function Header({ currentLabel, setMobileNav, logout }) {
+export default function Header({ currentLabel, setMobileNav, logout, data }) {
   const user = getUser();
   const userName = user?.fullName || 'System Administrator';
   const userInitials = userName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'SA';
@@ -23,7 +23,7 @@ export default function Header({ currentLabel, setMobileNav, logout }) {
         </button>
         <div className="min-w-0 flex-1">
           <p className="whitespace-nowrap text-[10px] sm:text-xs font-bold uppercase tracking-normal sm:tracking-[.12em] text-[#9b7a3a] dark:text-[#eab65a] leading-tight">
-            {getActiveSeasonYear()} Qurbani season
+            {getActiveSeasonYear(data)} Qurbani season
           </p>
           <h1 className="truncate font-display text-[15px] sm:text-xl lg:text-2xl font-extrabold tracking-tight text-[#183f35] dark:text-[#edf6f2] leading-tight mt-0.5 sm:mt-1">
             {currentLabel || 'Workspace'}

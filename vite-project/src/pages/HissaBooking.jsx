@@ -27,6 +27,7 @@ import {
   MAX_HISSA_COUNT,
   MAX_HISSA_DIGITS,
   MAX_TOTAL_BOOKING_COST,
+  MAX_COST_INPUT_LENGTH,
   formatTotalAmount,
 } from '../utils/pricing.js';
 
@@ -439,12 +440,12 @@ export default function HissaBooking({ data, patchData, notify, navigate }) {
       return;
     }
     const input = e.target;
-    const hasSelection =
-      input &&
-      typeof input.selectionStart === 'number' &&
-      typeof input.selectionEnd === 'number' &&
-      input.selectionStart !== input.selectionEnd;
-    if (!hasSelection && String(form.hissa || '').length >= MAX_HISSA_DIGITS) {
+    const currentVal = String(form.hissa || '');
+    const start = typeof input?.selectionStart === 'number' ? input.selectionStart : currentVal.length;
+    const end = typeof input?.selectionEnd === 'number' ? input.selectionEnd : currentVal.length;
+    const nextVal = currentVal.slice(0, start) + e.key + currentVal.slice(end);
+
+    if (nextVal.length > MAX_HISSA_DIGITS || Number(nextVal) > MAX_HISSA_COUNT) {
       e.preventDefault();
       setHissaError(`Total hissa cannot exceed ${MAX_HISSA_COUNT.toLocaleString('en-IN')}.`);
     }
@@ -500,10 +501,48 @@ export default function HissaBooking({ data, patchData, notify, navigate }) {
       setCostError('Only numbers and a decimal point are allowed.');
       return;
     }
-    if (e.key === '.' && form.cost.includes('.')) {
-      e.preventDefault();
-      setCostError('Only one decimal point is allowed.');
+
+    const input = e.target;
+    const currentVal = String(form.cost || '');
+    const start = typeof input?.selectionStart === 'number' ? input.selectionStart : currentVal.length;
+    const end = typeof input?.selectionEnd === 'number' ? input.selectionEnd : currentVal.length;
+    const selectedText = currentVal.slice(start, end);
+
+    if (e.key === '.') {
+      if (currentVal.includes('.') && !selectedText.includes('.')) {
+        e.preventDefault();
+        setCostError('Only one decimal point is allowed.');
+        return;
+      }
       return;
+    }
+
+    if (/^\d$/.test(e.key)) {
+      const nextVal = currentVal.slice(0, start) + e.key + currentVal.slice(end);
+      const [wholePart = '', decimalPart] = nextVal.split('.');
+
+      if (wholePart.length > MAX_COST_DIGITS) {
+        e.preventDefault();
+        setCostError(
+          `Cost per Hissa cannot exceed ₹${MAX_COST_PER_HISSA.toLocaleString('en-IN')} (entered amount is out of range or exceeds permitted limit).`
+        );
+        return;
+      }
+
+      if (decimalPart !== undefined && decimalPart.length > MAX_DECIMAL_PLACES) {
+        e.preventDefault();
+        setCostError('Cost per Hissa cannot have more than 2 decimal places.');
+        return;
+      }
+
+      const nextNum = Number(nextVal);
+      if (!isNaN(nextNum) && nextNum > MAX_COST_PER_HISSA) {
+        e.preventDefault();
+        setCostError(
+          `Cost per Hissa cannot exceed ₹${MAX_COST_PER_HISSA.toLocaleString('en-IN')} (entered amount is out of range or exceeds permitted limit).`
+        );
+        return;
+      }
     }
   };
 
@@ -519,16 +558,34 @@ export default function HissaBooking({ data, patchData, notify, navigate }) {
     if (!cleaned) return;
 
     const parts = cleaned.split('.');
-    if (parts.length > 2) {
-      cleaned = `${parts[0]}.${parts.slice(1).join('')}`;
+    let whole = parts[0] || '';
+    let decimal = parts.length > 1 ? parts.slice(1).join('') : undefined;
+
+    let limitExceeded = false;
+    if (whole.length > MAX_COST_DIGITS) {
+      whole = whole.slice(0, MAX_COST_DIGITS);
+      limitExceeded = true;
     }
-    if (cleaned.length > 35) {
-      cleaned = cleaned.slice(0, 35);
+    if (decimal !== undefined && decimal.length > MAX_DECIMAL_PLACES) {
+      decimal = decimal.slice(0, MAX_DECIMAL_PLACES);
+      limitExceeded = true;
+    }
+
+    cleaned = decimal !== undefined ? `${whole}.${decimal}` : whole;
+
+    const num = Number(cleaned);
+    if (!isNaN(num) && num > MAX_COST_PER_HISSA) {
+      limitExceeded = true;
     }
 
     e.preventDefault();
     set('cost', cleaned);
     validateEnteredCost(cleaned);
+    if (limitExceeded) {
+      setCostError(
+        `Cost per Hissa cannot exceed ₹${MAX_COST_PER_HISSA.toLocaleString('en-IN')} (entered amount is out of range or exceeds permitted limit).`
+      );
+    }
   };
 
   const validateEnteredCost = (val) => {
@@ -555,14 +612,33 @@ export default function HissaBooking({ data, patchData, notify, navigate }) {
   const handleCostChange = (e) => {
     let val = e.target.value.replace(/[^\d.]/g, '');
     const parts = val.split('.');
-    if (parts.length > 2) {
-      val = `${parts[0]}.${parts.slice(1).join('')}`;
+    let whole = parts[0] || '';
+    let decimal = parts.length > 1 ? parts.slice(1).join('') : undefined;
+
+    let limitExceeded = false;
+    if (whole.length > MAX_COST_DIGITS) {
+      whole = whole.slice(0, MAX_COST_DIGITS);
+      limitExceeded = true;
     }
-    if (val.length > 35) {
-      val = val.slice(0, 35);
+    if (decimal !== undefined && decimal.length > MAX_DECIMAL_PLACES) {
+      decimal = decimal.slice(0, MAX_DECIMAL_PLACES);
+      limitExceeded = true;
     }
+
+    val = decimal !== undefined ? `${whole}.${decimal}` : whole;
+
+    const num = Number(val);
+    if (!isNaN(num) && num > MAX_COST_PER_HISSA) {
+      limitExceeded = true;
+    }
+
     set('cost', val);
     validateEnteredCost(val);
+    if (limitExceeded) {
+      setCostError(
+        `Cost per Hissa cannot exceed ₹${MAX_COST_PER_HISSA.toLocaleString('en-IN')} (entered amount is out of range or exceeds permitted limit).`
+      );
+    }
   };
 
   const handleCostBlur = () => {
@@ -693,7 +769,8 @@ export default function HissaBooking({ data, patchData, notify, navigate }) {
           bookedBy: rawNewBooking?.bookedByAdminName || rawNewBooking?.bookedBy || 'System Administrator',
           createdAt: rawNewBooking?.createdAt || new Date().toISOString(),
         };
-        const receiptNo = rawNewBooking.receiptNumber || `ID: ${rawNewBooking.hissaBookingId || rawNewBooking.id}`;
+        const rawReceipt = rawNewBooking.receiptNumber || rawNewBooking.hissaBookingId || rawNewBooking.id;
+        const receiptNo = rawReceipt ? String(rawReceipt).replace(/^#/, '') : 'Confirmed';
         setCreatedBooking(rawNewBooking);
         setSuccess(`Booking ${receiptNo} confirmed for ${form.personName}.`);
         notify(`Booking ${receiptNo} created successfully!`, 'success');
@@ -781,9 +858,10 @@ export default function HissaBooking({ data, patchData, notify, navigate }) {
   const handleDownloadReceipt = async (booking) => {
     if (!booking) return;
     const targetId = booking.hissaBookingId || booking.id;
+    const receiptCode = String(booking.receiptNumber || booking.bookingId || booking.id || targetId || '').replace(/^#/, '');
     try {
       setIsDownloading(true);
-      notify?.(`Generating PDF receipt for ${booking.receiptNumber || `#${targetId}`}...`, 'info');
+      notify?.(`Generating PDF receipt for ${receiptCode}...`, 'info');
       const filename = await downloadReceipt(booking);
       notify?.(`Receipt ${filename} downloaded successfully!`, 'success');
     } catch (err) {
@@ -1062,7 +1140,7 @@ export default function HissaBooking({ data, patchData, notify, navigate }) {
                   className={`input ${costError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
                   type="text"
                   inputMode="decimal"
-                  maxLength={35}
+                  maxLength={MAX_COST_INPUT_LENGTH}
                   value={form.cost}
                   onKeyDown={handleCostKeyDown}
                   onChange={handleCostChange}

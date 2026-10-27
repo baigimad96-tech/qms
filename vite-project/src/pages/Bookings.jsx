@@ -30,6 +30,7 @@ import {
   MAX_HISSA_COUNT,
   MAX_HISSA_DIGITS,
   MAX_TOTAL_BOOKING_COST,
+  MAX_COST_INPUT_LENGTH,
   formatTotalAmount,
 } from '../utils/pricing.js';
 import { getActiveSeasonYear } from '../utils/season.js';
@@ -87,7 +88,10 @@ export function normalizeBooking(b) {
       : null) ||
     b.id;
 
-  const receiptNo = b.receiptNumber || (bookingId ? `QB-2026-${String(bookingId).padStart(6, '0')}` : String(b.id || ''));
+  const rawReceipt = b.receiptNumber ? String(b.receiptNumber).replace(/^#/, '') : '';
+  const receiptNo =
+    rawReceipt ||
+    (bookingId ? `QB-2026-${String(bookingId).padStart(6, '0')}` : String(b.id || '').replace(/^#/, ''));
 
   return {
     ...b,
@@ -238,10 +242,48 @@ export function BookingEditModal({
       setCostError('Only numbers and a decimal point are allowed.');
       return;
     }
-    if (e.key === '.' && form.cost.includes('.')) {
-      e.preventDefault();
-      setCostError('Only one decimal point is allowed.');
+
+    const input = e.target;
+    const currentVal = String(form.cost || '');
+    const start = typeof input?.selectionStart === 'number' ? input.selectionStart : currentVal.length;
+    const end = typeof input?.selectionEnd === 'number' ? input.selectionEnd : currentVal.length;
+    const selectedText = currentVal.slice(start, end);
+
+    if (e.key === '.') {
+      if (currentVal.includes('.') && !selectedText.includes('.')) {
+        e.preventDefault();
+        setCostError('Only one decimal point is allowed.');
+        return;
+      }
       return;
+    }
+
+    if (/^\d$/.test(e.key)) {
+      const nextVal = currentVal.slice(0, start) + e.key + currentVal.slice(end);
+      const [wholePart = '', decimalPart] = nextVal.split('.');
+
+      if (wholePart.length > MAX_COST_DIGITS) {
+        e.preventDefault();
+        setCostError(
+          `Cost per Hissa cannot exceed ₹${MAX_COST_PER_HISSA.toLocaleString('en-IN')} (entered amount is out of range or exceeds permitted limit).`
+        );
+        return;
+      }
+
+      if (decimalPart !== undefined && decimalPart.length > MAX_DECIMAL_PLACES) {
+        e.preventDefault();
+        setCostError('Cost per Hissa cannot have more than 2 decimal places.');
+        return;
+      }
+
+      const nextNum = Number(nextVal);
+      if (!isNaN(nextNum) && nextNum > MAX_COST_PER_HISSA) {
+        e.preventDefault();
+        setCostError(
+          `Cost per Hissa cannot exceed ₹${MAX_COST_PER_HISSA.toLocaleString('en-IN')} (entered amount is out of range or exceeds permitted limit).`
+        );
+        return;
+      }
     }
   };
 
@@ -257,16 +299,34 @@ export function BookingEditModal({
     if (!cleaned) return;
 
     const parts = cleaned.split('.');
-    if (parts.length > 2) {
-      cleaned = `${parts[0]}.${parts.slice(1).join('')}`;
+    let whole = parts[0] || '';
+    let decimal = parts.length > 1 ? parts.slice(1).join('') : undefined;
+
+    let limitExceeded = false;
+    if (whole.length > MAX_COST_DIGITS) {
+      whole = whole.slice(0, MAX_COST_DIGITS);
+      limitExceeded = true;
     }
-    if (cleaned.length > 35) {
-      cleaned = cleaned.slice(0, 35);
+    if (decimal !== undefined && decimal.length > MAX_DECIMAL_PLACES) {
+      decimal = decimal.slice(0, MAX_DECIMAL_PLACES);
+      limitExceeded = true;
+    }
+
+    cleaned = decimal !== undefined ? `${whole}.${decimal}` : whole;
+
+    const num = Number(cleaned);
+    if (!isNaN(num) && num > MAX_COST_PER_HISSA) {
+      limitExceeded = true;
     }
 
     e.preventDefault();
     set('cost', cleaned);
     validateEnteredCost(cleaned);
+    if (limitExceeded) {
+      setCostError(
+        `Cost per Hissa cannot exceed ₹${MAX_COST_PER_HISSA.toLocaleString('en-IN')} (entered amount is out of range or exceeds permitted limit).`
+      );
+    }
   };
 
   const validateEnteredCost = (val) => {
@@ -293,14 +353,33 @@ export function BookingEditModal({
   const handleCostChange = (e) => {
     let val = e.target.value.replace(/[^\d.]/g, '');
     const parts = val.split('.');
-    if (parts.length > 2) {
-      val = `${parts[0]}.${parts.slice(1).join('')}`;
+    let whole = parts[0] || '';
+    let decimal = parts.length > 1 ? parts.slice(1).join('') : undefined;
+
+    let limitExceeded = false;
+    if (whole.length > MAX_COST_DIGITS) {
+      whole = whole.slice(0, MAX_COST_DIGITS);
+      limitExceeded = true;
     }
-    if (val.length > 35) {
-      val = val.slice(0, 35);
+    if (decimal !== undefined && decimal.length > MAX_DECIMAL_PLACES) {
+      decimal = decimal.slice(0, MAX_DECIMAL_PLACES);
+      limitExceeded = true;
     }
+
+    val = decimal !== undefined ? `${whole}.${decimal}` : whole;
+
+    const num = Number(val);
+    if (!isNaN(num) && num > MAX_COST_PER_HISSA) {
+      limitExceeded = true;
+    }
+
     set('cost', val);
     validateEnteredCost(val);
+    if (limitExceeded) {
+      setCostError(
+        `Cost per Hissa cannot exceed ₹${MAX_COST_PER_HISSA.toLocaleString('en-IN')} (entered amount is out of range or exceeds permitted limit).`
+      );
+    }
   };
 
   const handleHissaKeyDown = (e) => {
@@ -326,12 +405,12 @@ export function BookingEditModal({
       return;
     }
     const input = e.target;
-    const hasSelection =
-      input &&
-      typeof input.selectionStart === 'number' &&
-      typeof input.selectionEnd === 'number' &&
-      input.selectionStart !== input.selectionEnd;
-    if (!hasSelection && String(form.hissa || '').length >= MAX_HISSA_DIGITS) {
+    const currentVal = String(form.hissa || '');
+    const start = typeof input?.selectionStart === 'number' ? input.selectionStart : currentVal.length;
+    const end = typeof input?.selectionEnd === 'number' ? input.selectionEnd : currentVal.length;
+    const nextVal = currentVal.slice(0, start) + e.key + currentVal.slice(end);
+
+    if (nextVal.length > MAX_HISSA_DIGITS || Number(nextVal) > MAX_HISSA_COUNT) {
       e.preventDefault();
       setHissaError(`Total hissa cannot exceed ${MAX_HISSA_COUNT.toLocaleString('en-IN')}.`);
     }
@@ -345,6 +424,24 @@ export function BookingEditModal({
     set('hissa', val);
     const num = Number(val);
     if (!val || isNaN(num) || num < 1) {
+      setHissaError('Total hissa must be at least 1.');
+    } else if (num > MAX_HISSA_COUNT) {
+      setHissaError(`Total hissa cannot exceed ${MAX_HISSA_COUNT.toLocaleString('en-IN')}.`);
+    } else {
+      setHissaError('');
+    }
+  };
+
+  const handleHissaPaste = (e) => {
+    const text = e.clipboardData?.getData('text') || '';
+    let cleaned = text.replace(/\D/g, '');
+    if (cleaned.length > MAX_HISSA_DIGITS) {
+      cleaned = cleaned.slice(0, MAX_HISSA_DIGITS);
+    }
+    e.preventDefault();
+    set('hissa', cleaned);
+    const num = Number(cleaned);
+    if (!cleaned || isNaN(num) || num < 1) {
       setHissaError('Total hissa must be at least 1.');
     } else if (num > MAX_HISSA_COUNT) {
       setHissaError(`Total hissa cannot exceed ${MAX_HISSA_COUNT.toLocaleString('en-IN')}.`);
@@ -504,6 +601,7 @@ export function BookingEditModal({
               value={form.hissa}
               onKeyDown={handleHissaKeyDown}
               onChange={handleHissaChange}
+              onPaste={handleHissaPaste}
               required
             />
             {hissaError && (
@@ -519,7 +617,7 @@ export function BookingEditModal({
               className={`input ${costError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
               type="text"
               inputMode="decimal"
-              maxLength={35}
+              maxLength={MAX_COST_INPUT_LENGTH}
               value={form.cost}
               onKeyDown={handleCostKeyDown}
               onChange={handleCostChange}
@@ -655,7 +753,7 @@ export function BookingDeleteModal({
         <div className="soft-inset rounded-xl p-3.5">
           <p className="text-xs text-[#78847c] dark:text-[#92b1a3]">Receipt No</p>
           <p className="mt-0.5 font-bold font-mono text-[#183f35] dark:text-[#edf6f2]">
-            #{receiptNo}
+            {receiptNo}
           </p>
         </div>
         <div className="soft-inset rounded-xl p-3.5">
@@ -779,7 +877,6 @@ export function matchesReceipt(b, cleanQ) {
 export default function Bookings({ data, patchData, notify, navigate, selectedId }) {
   const [query, setQuery] = useState('');
   const [day, setDay] = useState('All days');
-  const [animalFilter, setAnimalFilter] = useState('All');
   const [meat, setMeat] = useState('All');
 
   const [bookings, setBookings] = useState(data.bookings || []);
@@ -871,26 +968,21 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
   ];
 
-  // Build animal type filter options
-  const animalOptions = useMemo(() => {
-    const types = new Set();
-    animals.forEach((a) => {
+  // Registered animal type (defaulting to Buffalo)
+  const currentAnimalType = useMemo(() => {
+    for (const a of animals) {
       const type = (a.animalType || a.animal || '').trim();
-      if (type) types.add(type);
-    });
-    bookings.forEach((b) => {
+      if (type) return type;
+    }
+    for (const b of bookings) {
       const type = (
         typeof b.animal === 'object' && b.animal !== null
           ? b.animal.animalType || b.animal.name || ''
           : b.animalType || b.animal || ''
       ).trim();
-      if (type) types.add(type);
-    });
-    if (types.size === 0) {
-      types.add('Buffalo');
+      if (type) return type;
     }
-    const sorted = Array.from(types).sort((a, b) => a.localeCompare(b));
-    return ['Animal: All', ...sorted.map((t) => `Animal: ${t}`)];
+    return 'Buffalo';
   }, [animals, bookings]);
 
   const q = query.trim().toLowerCase();
@@ -912,16 +1004,7 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
       const matchesDay = day === 'All days' || b.day === day;
       const matchesMeat = meat === 'All' || b.meatWanted === meat;
 
-      const bAnimal = (
-        typeof b.animal === 'object' && b.animal !== null
-          ? b.animal.animalType || b.animal.name || ''
-          : b.animalType || b.animal || ''
-      ).trim();
-      const matchesAnimal =
-        animalFilter === 'All' ||
-        bAnimal.toLowerCase() === animalFilter.toLowerCase();
-
-      return matchesQuery && matchesDay && matchesMeat && matchesAnimal;
+      return matchesQuery && matchesDay && matchesMeat;
     })
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
@@ -1111,8 +1194,9 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
         }
 
         setEditingBooking(null);
+        const updatedCode = String(normalized.receiptNumber || normalized.id || '').replace(/^#/, '');
         notify?.(
-          `Booking ${normalized.receiptNumber || normalized.id} updated successfully!`,
+          `Booking ${updatedCode} updated successfully!`,
           'success'
         );
         fetchData();
@@ -1133,9 +1217,10 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
   const handleDownloadReceipt = async (booking) => {
     if (!booking) return;
     const targetId = booking.hissaBookingId || booking.id;
+    const receiptCode = String(booking.receiptNumber || booking.bookingId || booking.id || targetId || '').replace(/^#/, '');
     try {
       setDownloadingId(targetId);
-      notify?.(`Generating PDF receipt for ${booking.receiptNumber || `#${targetId}`}...`, 'info');
+      notify?.(`Generating PDF receipt for ${receiptCode}...`, 'info');
       const filename = await downloadReceipt(booking);
       notify?.(`Receipt ${filename} downloaded successfully!`, 'success');
     } catch (err) {
@@ -1158,13 +1243,14 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
       (typeof booking.id === 'string' && booking.id.includes('-')
         ? parseInt(booking.id.split('-').pop(), 10) || booking.id
         : booking.id);
+    const receiptCode = String(booking.receiptNumber || booking.bookingId || booking.hissaBookingId || booking.id || targetId || '').replace(/^#/, '');
 
     setDeletingId(targetId);
 
     try {
       const res = await api.delete(`/api/v1/hissa-bookings/${targetId}`);
       if (res?.data?.success || res?.status === 200 || res?.status === 204) {
-        notify?.(`Booking #${booking.receiptNumber || targetId} deleted successfully.`, 'success');
+        notify?.(`Booking ${receiptCode} deleted successfully.`, 'success');
 
         setBookings((prev) =>
           prev.filter(
@@ -1214,7 +1300,7 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
             ),
           }));
         }
-        notify?.(`Booking #${booking.receiptNumber || targetId} removed locally (server offline).`, 'info');
+        notify?.(`Booking ${receiptCode} removed locally (server offline).`, 'info');
         setDeletingBooking(null);
         navigate('/bookings');
       } else {
@@ -1276,8 +1362,8 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
               className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-10 pr-8 text-xs font-medium !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search person, receipt, animal..."
-              title="Search person, receipt, animal..."
+              placeholder="Search"
+              title="Search"
             />
             {query && (
               <button
@@ -1299,17 +1385,18 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
             testId="select-booking-day-filter"
           />
 
-          {/* Custom Project Dropdown: Animal Type */}
-          <ProjectDropdown
-            value={animalFilter === 'All' ? 'Animal: All' : `Animal: ${animalFilter}`}
-            onChange={(selectedAnimal) => {
-              const clean = selectedAnimal.replace(/^Animal:\s*/i, '');
-              setAnimalFilter(clean);
-            }}
-            options={animalOptions}
-            icon={Layers}
-            testId="select-animal-filter"
-          />
+          {/* Static Animal Type Indicator */}
+          <div
+            data-testid="select-animal-filter"
+            title={`Animal: ${currentAnimalType}`}
+            className="flex h-10 items-center gap-2 rounded-xl border border-[#ded8ca] bg-[#faf6ed] px-3 text-xs font-semibold text-[#183f35] select-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2]"
+          >
+            <Layers
+              size={14}
+              className="shrink-0 text-[#246b59] dark:text-[#4ade80]"
+            />
+            <span className="truncate">Animal: {currentAnimalType}</span>
+          </div>
 
           {/* Custom Project Dropdown: Meat Wanted */}
           <ProjectDropdown
@@ -1324,13 +1411,12 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
           />
 
           {/* Reset Filters */}
-          {(day !== 'All days' || animalFilter !== 'All' || meat !== 'All' || query) && (
+          {(day !== 'All days' || meat !== 'All' || query) && (
             <button
               type="button"
               onClick={() => {
                 setQuery('');
                 setDay('All days');
-                setAnimalFilter('All');
                 setMeat('All');
               }}
               className="h-10 rounded-xl px-3 text-xs font-bold text-[#a63f32] transition hover:bg-[#fff3f0] dark:text-[#fca5a5] dark:hover:bg-[#331614]"

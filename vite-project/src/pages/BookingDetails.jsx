@@ -30,8 +30,10 @@ export default function BookingDetails({
   const hissaCount = booking.totalHissa !== undefined ? booking.totalHissa : (booking.hissa || 1);
   const totalCost = booking.totalHissaCost !== undefined ? booking.totalHissaCost : (booking.cost || 0);
 
+  const receiptNo = String(booking.receiptNumber || booking.id || booking.hissaBookingId || '').replace(/^#/, '');
+
   const fields = [
-    ['Receipt No', booking.receiptNumber || booking.id || booking.hissaBookingId],
+    ['Receipt No', receiptNo || '—'],
     ['Animal', displayAnimal],
     ['Qurbani Day', displayDay],
     ['Qurbani Person Name', booking.qurbaniPersonName || booking.personName],
@@ -44,7 +46,7 @@ export default function BookingDetails({
   ];
 
   return (
-    <Modal title="Booking details" description="Confirmed Hissa record" onClose={onClose}>
+    <Modal title="Booking details" description="Confirmed Hissa record" onClose={onClose} closeOnBack={false}>
       <div className="grid gap-3 sm:grid-cols-2">
         {fields.map(([label, value]) => (
           <div key={label} className="soft-inset rounded-xl p-4">
@@ -61,7 +63,7 @@ export default function BookingDetails({
 
       <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-[#eee8dc] pt-5 dark:border-[#1a3d31]">
         <div className="text-xs font-mono text-[#8a948e] dark:text-[#789d8e]">
-          Receipt: {booking.receiptNumber || booking.id}
+          Receipt: {receiptNo || '—'}
         </div>
         <div className="flex flex-col-reverse sm:flex-row gap-2.5">
           <button

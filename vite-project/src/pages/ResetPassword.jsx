@@ -21,7 +21,7 @@ import { resetPassword } from '../services/authApi.js';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { getActiveSeasonYear } from '../utils/season.js';
 
-const PASSWORD_REGEX = /^(?=\S{8,100}$)(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).*$/;
+const PASSWORD_REGEX = /^(?=\S{8,64}$)(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).*$/;
 
 export default function ResetPassword({ navigate, notify }) {
   const [searchParams] = useSearchParams();
@@ -60,7 +60,7 @@ export default function ResetPassword({ navigate, notify }) {
 
   // Password rules evaluation for real-time visual feedback
   const rules = [
-    { label: 'Between 8 and 100 characters (no spaces)', valid: /^\S{8,100}$/.test(watchedNewPassword) },
+    { label: 'Between 8 and 64 characters (no spaces)', valid: /^\S{8,64}$/.test(watchedNewPassword) },
     { label: 'At least one uppercase letter (A-Z)', valid: /[A-Z]/.test(watchedNewPassword) },
     { label: 'At least one lowercase letter (a-z)', valid: /[a-z]/.test(watchedNewPassword) },
     { label: 'At least one number (0-9)', valid: /\d/.test(watchedNewPassword) },
@@ -227,11 +227,11 @@ export default function ResetPassword({ navigate, notify }) {
                       <input
                         data-testid="input-new-password"
                         type={showNewPassword ? 'text' : 'password'}
-                        maxLength={100}
+                        maxLength={64}
                         {...register('newPassword', {
                           required: 'New password is required',
-                          minLength: { value: 8, message: 'Password must be between 8 and 100 characters' },
-                          maxLength: { value: 100, message: 'Password must be between 8 and 100 characters' },
+                          minLength: { value: 8, message: 'Password must be between 8 and 64 characters' },
+                          maxLength: { value: 64, message: 'Password must be between 8 and 64 characters' },
                           pattern: {
                             value: PASSWORD_REGEX,
                             message: 'Password must contain uppercase, lowercase, number and special character',
@@ -286,9 +286,10 @@ export default function ResetPassword({ navigate, notify }) {
                       <input
                         data-testid="input-confirm-password"
                         type={showConfirmPassword ? 'text' : 'password'}
-                        maxLength={100}
+                        maxLength={64}
                         {...register('confirmPassword', {
                           required: 'Confirm password is required',
+                          maxLength: { value: 64, message: 'Password cannot exceed 64 characters' },
                           validate: (val) => val === watch('newPassword') || 'Confirm password must match new password',
                         })}
                         className="input pr-10"
