@@ -12,10 +12,10 @@ const ENV = {
     BASE_URL: 'https://taylor-unirritant-latina.ngrok-free.dev', // ngrok
   },
   staging: {
-    BASE_URL: 'https://jih-api.ethicalint.com',
+    BASE_URL: 'https://jih-prod.ethicalint.com',
   },
   prod: {
-    BASE_URL: 'https://jih-api.ethicalint.com',
+    BASE_URL: 'https://jih-prod.ethicalint.com',
   },
 };
 
