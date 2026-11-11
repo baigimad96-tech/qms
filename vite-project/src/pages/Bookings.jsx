@@ -175,14 +175,6 @@ export function BookingEditModal({
   );
 
   const rawMembers = Array.isArray(booking.members) ? booking.members : [];
-  const isCreatedAsMulti = Boolean(
-    booking.bookingMode === 'multi' ||
-    booking.bookingType === 'multi' ||
-    booking.isFamily === true ||
-    rawMembers.length > 1 ||
-    (booking.qurbaniPersonName || booking.personName || '').toLowerCase().includes('family')
-  );
-
   const initialMembers = useMemo(() => {
     if (rawMembers.length > 0) {
       return rawMembers.map((m) => ({
@@ -197,7 +189,7 @@ export function BookingEditModal({
     ];
   }, [rawMembers, initialName]);
 
-  const [bookingMode, setBookingMode] = useState(() => (isCreatedAsMulti ? 'multi' : 'single'));
+  const [bookingMode, setBookingMode] = useState(() => (rawMembers.length > 1 ? 'multi' : 'single'));
   const [members, setMembers] = useState(() => initialMembers);
   const [memberErrors, setMemberErrors] = useState({});
 
@@ -213,16 +205,6 @@ export function BookingEditModal({
 
   // Keep form & members updated if booking object is enriched asynchronously
   useEffect(() => {
-    const isMulti = Boolean(
-      booking.bookingMode === 'multi' ||
-      booking.bookingType === 'multi' ||
-      booking.isFamily === true ||
-      (Array.isArray(booking.members) && booking.members.length > 1) ||
-      (booking.qurbaniPersonName || booking.personName || '').toLowerCase().includes('family')
-    );
-    if (isMulti) {
-      setBookingMode('multi');
-    }
     if (Array.isArray(booking.members) && booking.members.length > 0) {
       setMembers(
         booking.members.map((m) => ({
@@ -231,6 +213,9 @@ export function BookingEditModal({
           hissaCount: Number(m.hissaCount) || 1,
         }))
       );
+      if (booking.members.length > 1) {
+        setBookingMode('multi');
+      }
     }
     const cId =
       booking.collectionCentreId ||
@@ -244,18 +229,7 @@ export function BookingEditModal({
         collectionCentreId: prev.collectionCentreId || String(cId),
       }));
     }
-  }, [
-    booking.members,
-    booking.bookingMode,
-    booking.bookingType,
-    booking.isFamily,
-    booking.qurbaniPersonName,
-    booking.personName,
-    booking.collectionCentreId,
-    booking.collectionCentre,
-    booking.collectionCentreName,
-    centres,
-  ]);
+  }, [booking.members, booking.collectionCentreId, booking.collectionCentre, booking.collectionCentreName, centres]);
 
   const activeSeasonYear = getActiveSeasonYear();
 
@@ -707,13 +681,8 @@ export function BookingEditModal({
   return (
     <Modal
       title={`Edit booking ${receiptCode}`}
-      description={
-        bookingMode === 'multi'
-          ? 'Update family group details, allocated Hissa, animal, day, collection centre, or family members.'
-          : 'Update participant details, allocated Hissa, animal, day, or collection centre.'
-      }
+      description="Update participant details, allocated Hissa, animal, day, collection centre, or family members."
       onClose={onClose}
-      maxWidth="max-w-2xl sm:max-w-2xl"
     >
       {apiError && (
         <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-[#f3a69b] bg-[#fff3f0] p-3.5 text-xs text-[#a63f32] dark:border-[#5c2420] dark:bg-[#331614] dark:text-[#fca5a5]">
@@ -723,38 +692,54 @@ export function BookingEditModal({
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Booking Type Indicator (Locked to original booking creation type) */}
-        <div className="flex items-center justify-between rounded-xl border border-[#ded8ca] bg-[#fbf9f4]/80 px-3.5 py-2.5 dark:border-[#1e493b] dark:bg-[#11271f]/60">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-[#6b776f] dark:text-[#9bb8ab]">
-              Booking Type:
-            </span>
-            <span
-              data-testid="badge-edit-booking-type"
-              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ${
-                bookingMode === 'multi'
-                  ? 'bg-[#246b59]/10 text-[#246b59] dark:bg-[#52c99a]/10 dark:text-[#52c99a]'
-                  : 'bg-[#eef7f2] text-[#246b59] dark:bg-[#153427] dark:text-[#52c99a]'
+        {/* Booking Type Switcher */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold uppercase tracking-[.1em] text-[#6b776f] dark:text-[#9bb8ab]">
+            Booking Type
+          </label>
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-[#eee8dc]/70 p-1 dark:bg-[#142e24] border border-[#ded8ca] dark:border-[#1e493b]">
+            <button
+              type="button"
+              data-testid="button-edit-mode-single"
+              onClick={() => {
+                setBookingMode('single');
+                setHissaError('');
+              }}
+              className={`flex items-center justify-center gap-2 rounded-lg py-2 px-3 text-xs font-bold transition ${
+                bookingMode === 'single'
+                  ? 'bg-white dark:bg-[#1f5548] text-[#183f35] dark:text-[#f8f3e7] shadow-sm'
+                  : 'text-[#6f7b73] dark:text-[#8ba79b] hover:text-[#183f35] dark:hover:text-[#edf6f2]'
               }`}
             >
-              {bookingMode === 'multi' ? (
-                <>
-                  <Users size={14} className="shrink-0" />
-                  <span>Family / Multi-Person Booking</span>
-                </>
-              ) : (
-                <>
-                  <User size={14} className="shrink-0" />
-                  <span>Single Person Booking</span>
-                </>
-              )}
-            </span>
+              <User size={14} />
+              <span>Single Person</span>
+            </button>
+            <button
+              type="button"
+              data-testid="button-edit-mode-multi"
+              onClick={() => {
+                setBookingMode('multi');
+                setMembers((prev) => {
+                  if (prev.length < 2) {
+                    return [
+                      prev[0] || { memberName: form.personName || '', hissaCount: 1 },
+                      { memberName: '', hissaCount: 1 },
+                    ];
+                  }
+                  return prev;
+                });
+                setHissaError('');
+              }}
+              className={`flex items-center justify-center gap-2 rounded-lg py-2 px-3 text-xs font-bold transition ${
+                bookingMode === 'multi'
+                  ? 'bg-white dark:bg-[#1f5548] text-[#183f35] dark:text-[#f8f3e7] shadow-sm'
+                  : 'text-[#6f7b73] dark:text-[#8ba79b] hover:text-[#183f35] dark:hover:text-[#edf6f2]'
+              }`}
+            >
+              <Users size={14} />
+              <span>Family / Multi-Person</span>
+            </button>
           </div>
-          {bookingMode === 'multi' && (
-            <span className="text-[11px] font-semibold text-[#78847c] dark:text-[#92b1a3]">
-              {members.length} {members.length === 1 ? 'member' : 'members'}
-            </span>
-          )}
         </div>
 
         <Field label={bookingMode === 'multi' ? 'Family / Group Booking Name' : 'Qurbani person name'}>
