@@ -176,7 +176,21 @@ export function seedData() {
     admins: [],
     expenses: [],
     audits: [],
+    collectionCentres: [],
   };
+}
+
+export function deduplicateBookings(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  return list.filter((b, idx) => {
+    const rawKey = b?.receiptNumber || b?.hissaBookingId || b?.bookingId || b?.id || (b?.qurbaniPersonName ? `${b.qurbaniPersonName}-${b.createdAt}` : `idx-${idx}`);
+    const cleanKey = String(rawKey).replace(/^#/, '').trim();
+    if (!cleanKey) return true;
+    if (seen.has(cleanKey)) return false;
+    seen.add(cleanKey);
+    return true;
+  });
 }
 
 export function loadInitialData() {
@@ -185,15 +199,19 @@ export function loadInitialData() {
 
 export function persistData(data) {
   try {
-    localStorage.setItem('qurbani_animals', JSON.stringify(data.inventory));
-    localStorage.setItem('qurbani_bookings', JSON.stringify(data.bookings));
-    localStorage.setItem('qurbani_days', JSON.stringify(data.days));
-    localStorage.setItem('qurbani_admins', JSON.stringify(data.admins));
-    localStorage.setItem('qurbani_audit_logs', JSON.stringify(data.audits));
-    if (data.expenses) {
+    const cleanBookings = deduplicateBookings(data?.bookings);
+    if (data?.inventory) localStorage.setItem('qurbani_animals', JSON.stringify(data.inventory));
+    if (data?.bookings) localStorage.setItem('qurbani_bookings', JSON.stringify(cleanBookings));
+    if (data?.days) localStorage.setItem('qurbani_days', JSON.stringify(data.days));
+    if (data?.admins) localStorage.setItem('qurbani_admins', JSON.stringify(data.admins));
+    if (data?.audits) localStorage.setItem('qurbani_audit_logs', JSON.stringify(data.audits));
+    if (data?.expenses) {
       localStorage.setItem('qurbani_expenses', JSON.stringify(data.expenses));
     }
-    localStorage.setItem('qurbani-demo-data', JSON.stringify(data));
+    if (data?.collectionCentres) {
+      localStorage.setItem('qurbani_collection_centres', JSON.stringify(data.collectionCentres));
+    }
+    localStorage.setItem('qurbani-demo-data', JSON.stringify({ ...data, bookings: cleanBookings }));
   } catch (err) {
     console.error('Failed to save to localStorage:', err);
   }

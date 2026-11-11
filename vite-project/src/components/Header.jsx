@@ -22,12 +22,12 @@ export default function Header({ currentLabel, setMobileNav, logout, data }) {
           <Menu size={19} className="sm:h-[21px] sm:w-[21px]" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="whitespace-nowrap text-[10px] sm:text-xs font-bold uppercase tracking-normal sm:tracking-[.12em] text-[#9b7a3a] dark:text-[#eab65a] leading-tight">
-            {getActiveSeasonYear(data)} Qurbani season
+          <p
+            data-testid="header-season"
+            className="whitespace-nowrap text-xs sm:text-sm font-bold uppercase tracking-normal sm:tracking-[.14em] text-[#9b7a3a] dark:text-[#eab65a] leading-tight"
+          >
+            {getActiveSeasonYear(data)} Qurbani Season
           </p>
-          <h1 className="truncate font-display text-[15px] sm:text-xl lg:text-2xl font-extrabold tracking-tight text-[#183f35] dark:text-[#edf6f2] leading-tight mt-0.5 sm:mt-1">
-            {currentLabel || 'Workspace'}
-          </h1>
         </div>
       </div>
       <div className="ml-1 sm:ml-4 flex shrink-0 items-center gap-1 sm:gap-3">

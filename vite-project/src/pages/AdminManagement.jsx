@@ -670,7 +670,7 @@ export default function AdminManagement({ data, patchData, notify }) {
   return (
     <div>
       <PageIntro
-        eyebrow="Workspace access"
+        eyebrow="Workspace Access"
         title="Admin Management"
         description="Keep the small operations team directory current. All users in this workspace are Admins."
         action={openAddModal}

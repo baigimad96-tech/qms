@@ -115,14 +115,14 @@ export function getErrorMessage(err, fallback = 'An unexpected error occurred.')
   }
 
   if (status === 404) {
-    return resData?.message || resData?.error || 'Animal inventory not found.';
+    return resData?.message || resData?.error || 'Animal Inventory not found.';
   }
 
   if (status === 409) {
     return (
       resData?.message ||
       resData?.error ||
-      'Duplicate animal inventory for this animal type and batch year already exists.'
+      'Duplicate Animal Inventory for this animal type and batch year already exists.'
     );
   }
 
@@ -229,8 +229,8 @@ export function InventoryTable({ items, isLoading, onEdit, onView, onAddStock, o
                   <Td title={formatMoney(item.totalPrice)} className="max-w-[160px] truncate font-mono font-medium">{formatMoney(item.totalPrice)}</Td>
                   <Td>
                     <div className="flex gap-1 items-center">
-                      <IconButton label="View inventory" icon={Eye} onClick={() => onView(item)} />
-                      <IconButton label="Edit inventory" icon={Pencil} onClick={() => onEdit(item)} />
+                      <IconButton label="View Inventory" icon={Eye} onClick={() => onView(item)} />
+                      <IconButton label="Edit Inventory" icon={Pencil} onClick={() => onEdit(item)} />
                       {onAddStock && (
                         <IconButton
                           label="Add stock (+)"
@@ -1141,7 +1141,7 @@ export function InventoryModal({
 
   return (
     <Modal
-      title={item ? `Edit ${item.animalType || 'Animal'} batch` : 'Add Animal batch'}
+      title={item ? `Edit ${item.animalType || 'Animal'} Batch` : 'Add Animal Batch'}
       description="Keep the physical batch record and its Hissa math aligned (7 Hissa per animal)."
       onClose={onClose}
     >
@@ -1840,25 +1840,35 @@ export default function AnimalInventory({ data, patchData, notify }) {
     }
   };
 
+  const hasActiveBatch =
+    inventory.length > 0 ||
+    inventory.some(
+      (x) =>
+        String(x.batchYear) === String(currentYear) &&
+        (x.animalType || x.animal || 'Buffalo').toLowerCase() === 'buffalo'
+    );
+
   return (
     <div>
       <PageIntro
-        eyebrow="Inventory"
-        title="Animal inventory"
+        title="Animal Inventory"
         description="Track all animal batches, their Hissa allocations and the value held in your operation."
-        action={() => {
-          setApiError(null);
-          setModal({ type: 'edit', item: null });
-        }}
-        actionLabel="Add animal batch"
-        icon={Box}
+        action={
+          !hasActiveBatch && !isLoading
+            ? () => {
+                setApiError(null);
+                setModal({ type: 'edit', item: null });
+              }
+            : undefined
+        }
+        actionLabel={!hasActiveBatch && !isLoading ? 'Add Animal Batch' : undefined}
       />
 
       <div className="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-[#e7d5ad] bg-[#fff8e9] px-4 py-3 text-sm text-[#765820] dark:border-[#4f3f1c] dark:bg-[#2b2312] dark:text-[#f3c46a]">
         <div className="flex items-center gap-2">
           <Info size={17} className="shrink-0" />
           <span>
-            Each animal contributes <strong>7 Hissa</strong>. Booked Hissa is protected automatically against reduction.
+            Each buffalo contributes <strong>7 Hissa</strong>. Booked Hissa is protected automatically against reduction.
           </span>
         </div>
         <button

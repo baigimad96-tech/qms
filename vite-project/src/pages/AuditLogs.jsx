@@ -810,7 +810,7 @@ export default function AuditLogs({ data }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageIntro
           eyebrow="Accountability & Compliance"
-          title="Audit logs"
+          title="Audit Logs"
           description="A durable, immutable security ledger of all administrative and operational activities across inventory, bookings, and expenses."
           icon={Activity}
         />
