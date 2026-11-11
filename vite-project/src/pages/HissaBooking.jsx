@@ -1444,14 +1444,14 @@ export default function HissaBooking({
                 )}
               </Field>
 
-              <Field label="Collection Centre (Optional)">
+              <Field label="Collection Centre">
                 <select
                   data-testid="select-collection-centre"
                   className="input"
                   value={form.collectionCentreId}
                   onChange={(e) => set('collectionCentreId', e.target.value)}
                 >
-                  <option value="">Choose a collection centre (optional)</option>
+                  <option value="">Choose a collection centre</option>
                   {collectionCentres.map((centre) => {
                     const loc = (centre.location || centre.address || '').trim();
                     return (
@@ -1464,14 +1464,10 @@ export default function HissaBooking({
                     );
                   })}
                 </select>
-                {selectedCentre ? (
+                {selectedCentre && (
                   <p className="mt-1 text-[11px] font-semibold text-[#246b59] dark:text-[#52c99a] flex items-center gap-1">
                     <Building2 size={11} className="shrink-0" />
                     <span>Selected: {selectedCentre.name}</span>
-                  </p>
-                ) : (
-                  <p className="mt-1 text-[11px] text-[#7b867e] dark:text-[#8ba79b]">
-                    Physical centre for meat pickup/distribution.
                   </p>
                 )}
               </Field>
@@ -1535,7 +1531,7 @@ export default function HissaBooking({
                     className={`input ${personNameError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
                     value={form.personName}
                     onChange={handlePersonNameChange}
-                    placeholder="e.g. Mohammad Irfan"
+                    placeholder="Enter name"
                     required
                   />
                   {personNameError && (
@@ -1618,7 +1614,7 @@ export default function HissaBooking({
                       className={`input ${personNameError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
                       value={form.personName}
                       onChange={handlePersonNameChange}
-                      placeholder="Enter family or group name (e.g. Farooqi Family)"
+                      placeholder="Enter family or group name"
                       required
                     />
                     {personNameError && (
