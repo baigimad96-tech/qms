@@ -297,7 +297,7 @@ export function CollectionCentreModal({ centre, onClose, onSave, isSaving, apiEr
               data-testid="input-centre-contact-person"
               value={form.contactPerson}
               onChange={(e) => set('contactPerson', e.target.value)}
-              placeholder="Enter contact person name (e.g. Mohammad Bilal)"
+              placeholder="Enter contact person name"
               className={`input ${errors.contactPerson ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
               required
             />
@@ -323,7 +323,7 @@ export function CollectionCentreModal({ centre, onClose, onSave, isSaving, apiEr
                 value={form.contactNumber}
                 onKeyDown={handlePhoneKeyDown}
                 onChange={handlePhoneChange}
-                placeholder="Enter 10-digit mobile number"
+                placeholder="Enter contact number"
                 className={`input !rounded-l-none ${errors.contactNumber ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
                 required
               />

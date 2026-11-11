@@ -748,7 +748,7 @@ export function BookingEditModal({
             className={`input ${personNameError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
             value={form.personName}
             onChange={handlePersonNameChange}
-            placeholder={bookingMode === 'multi' ? 'Enter family or group name' : 'Participant or family name'}
+            placeholder={bookingMode === 'multi' ? 'Enter family or group name' : 'Enter name'}
             required
           />
           {personNameError && (
@@ -812,14 +812,14 @@ export function BookingEditModal({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Collection Centre (Optional)">
+          <Field label="Collection Centre">
             <select
               data-testid="select-edit-collection-centre"
               className="input"
               value={form.collectionCentreId}
               onChange={(e) => set('collectionCentreId', e.target.value)}
             >
-              <option value="">Choose a collection centre (optional)</option>
+              <option value="">Choose a collection centre</option>
               {centres.map((centre) => {
                 const loc = (centre.location || centre.address || '').trim();
                 const cid = centre.collectionCentreId || centre.id;
