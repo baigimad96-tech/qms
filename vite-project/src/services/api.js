@@ -13,14 +13,14 @@ const ENV = {
     BASE_URL: 'https://long-peninsular-kamryn.ngrok-free.dev', // touseef
   },
   staging: {
-    BASE_URL: 'https://jih-api.ethicalint.com',
+    BASE_URL: 'https://jih-prod.ethicalint.com',
   },
   prod: {
-    BASE_URL: 'https://jih-api.ethicalint.com',
+    BASE_URL: 'https://jih-prod.ethicalint.com',
   },
 };
 
-const getEnvVars = (env = 'dev') => {
+const getEnvVars = (env = 'prod') => {
   if (!ENV[env]) {
     throw new Error(`Unknown environment: ${env}`);
   }

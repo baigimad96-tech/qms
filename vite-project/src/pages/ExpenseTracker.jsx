@@ -987,7 +987,6 @@ export default function ExpenseTracker({ data, patchData, notify }) {
     }
   };
 
-
   // Compute dynamic summary reflecting active filters or global backend summary
   const activeSummary = useMemo(() => {
     if (!hasValidFilters && summary.totalExpense > 0) {
@@ -1006,7 +1005,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
   }, [filteredExpenses, hasValidFilters, summary]);
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       {/* Page Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <PageIntro
@@ -1101,7 +1100,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
       })()}
 
       {/* Main Card with Filter Toolbar & Table */}
-      <section className="card-surface rounded-2xl p-5 sm:p-6">
+      <section className="card-surface min-w-0 rounded-2xl p-5 sm:p-6">
         {/* Table Title */}
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -1119,7 +1118,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
         </div>
 
         {/* Filter Toolbar with Project UI Dropdowns */}
-        <div className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="mb-6 flex min-w-0 flex-wrap items-center gap-3">
           {/* Search Box */}
           <div className="relative w-full sm:w-80 md:w-88">
             <Search
@@ -1168,51 +1167,65 @@ export default function ExpenseTracker({ data, patchData, notify }) {
             testId="dropdown-expense-day"
           />
 
-          {/* Date Range Picker */}
-          <div className="flex flex-col gap-1">
+          {/* Date Range Picker (responsive: stacked on mobile, single row on sm+) */}
+          <div className="flex w-full min-w-0 flex-col gap-1 sm:w-auto">
             <div
-              className={`flex h-10 items-center gap-1.5 rounded-xl border px-3 text-xs transition-colors ${
+              className={`flex w-full min-w-0 flex-col gap-2 rounded-xl border p-2.5 text-xs transition-colors sm:h-10 sm:w-auto sm:flex-row sm:items-center sm:gap-1.5 sm:p-0 sm:px-3 ${
                 dateError
                   ? 'border-[#a63f32] bg-[#fff5f5] text-[#a63f32] dark:border-red-500/70 dark:bg-red-950/30'
                   : 'border-[#ded8ca] bg-[#faf6ed] dark:border-[#21473a] dark:bg-[#122820]'
               }`}
             >
-              <Calendar
-                size={13}
-                className={`shrink-0 ${
-                  dateError ? 'text-[#a63f32] dark:text-red-400' : 'text-[#8a948e] dark:text-[#698d80]'
-                }`}
-              />
-              <span
-                className={`text-[11px] font-semibold ${
-                  dateError ? 'text-[#a63f32] dark:text-red-400' : 'text-[#8a948e] dark:text-[#698d80]'
-                }`}
-              >
-                From:
-              </span>
-              <input
-                data-testid="input-expense-from-date"
-                type="date"
-                max={toDate || undefined}
-                className="bg-transparent text-xs font-semibold text-[#183f35] dark:text-[#edf6f2] outline-none"
-                value={fromDate}
-                onChange={handleFromDateChange}
-              />
-              <span
-                className={`mx-0.5 text-[11px] font-semibold ${
-                  dateError ? 'text-[#a63f32] dark:text-red-400' : 'text-[#8a948e] dark:text-[#698d80]'
-                }`}
-              >
-                To:
-              </span>
-              <input
-                data-testid="input-expense-to-date"
-                type="date"
-                min={fromDate || undefined}
-                className="bg-transparent text-xs font-semibold text-[#183f35] dark:text-[#edf6f2] outline-none"
-                value={toDate}
-                onChange={handleToDateChange}
-              />
+              {/* From */}
+              <label className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none">
+                <Calendar
+                  size={13}
+                  className={`shrink-0 ${
+                    dateError ? 'text-[#a63f32] dark:text-red-400' : 'text-[#8a948e] dark:text-[#698d80]'
+                  }`}
+                />
+                <span
+                  className={`w-9 shrink-0 text-[11px] font-semibold sm:w-auto ${
+                    dateError ? 'text-[#a63f32] dark:text-red-400' : 'text-[#8a948e] dark:text-[#698d80]'
+                  }`}
+                >
+                  From:
+                </span>
+                <input
+                  data-testid="input-expense-from-date"
+                  type="date"
+                  max={toDate || undefined}
+                  className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-[#183f35] outline-none dark:text-[#edf6f2] sm:flex-none"
+                  value={fromDate}
+                  onChange={handleFromDateChange}
+                />
+              </label>
+
+              {/* To */}
+              <label className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none">
+                <Calendar
+                  size={13}
+                  className={`shrink-0 sm:hidden ${
+                    dateError ? 'text-[#a63f32] dark:text-red-400' : 'text-[#8a948e] dark:text-[#698d80]'
+                  }`}
+                />
+                <span
+                  className={`w-9 shrink-0 text-[11px] font-semibold sm:mx-0.5 sm:w-auto ${
+                    dateError ? 'text-[#a63f32] dark:text-red-400' : 'text-[#8a948e] dark:text-[#698d80]'
+                  }`}
+                >
+                  To:
+                </span>
+                <input
+                  data-testid="input-expense-to-date"
+                  type="date"
+                  min={fromDate || undefined}
+                  className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-[#183f35] outline-none dark:text-[#edf6f2] sm:flex-none"
+                  value={toDate}
+                  onChange={handleToDateChange}
+                />
+              </label>
+
               {(fromDate || toDate) && (
                 <button
                   type="button"
@@ -1222,7 +1235,7 @@ export default function ExpenseTracker({ data, patchData, notify }) {
                     setToDate('');
                     setDateError('');
                   }}
-                  className="ml-1 text-[#8a948e] hover:text-[#183f35] dark:hover:text-white"
+                  className="self-end text-[#8a948e] hover:text-[#183f35] dark:hover:text-white sm:ml-1 sm:self-auto"
                 >
                   <X size={13} />
                 </button>
