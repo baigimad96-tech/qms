@@ -262,7 +262,66 @@ export function seedData() {
       { id: 'AUD-003', admin: 'Aareb', action: 'ANIMAL_CREATED', entityType: 'ANIMAL', entityId: 'BUF-2025-02', at: '2025-05-01T08:10:00.000Z' },
       { id: 'AUD-004', admin: 'Aareb', action: 'ANIMAL_CREATED', entityType: 'ANIMAL', entityId: 'BUF-2024-01', at: '2025-05-01T08:15:00.000Z' },
     ],
+    collectionCentres: [
+      {
+        collectionCentreId: 1,
+        name: 'City Central Markaz',
+        location: 'City Center, Main Bazar',
+        address: 'City Center, Main Bazar',
+        contactPerson: 'Hafiz Farhan',
+        contactPersonName: 'Hafiz Farhan',
+        contactNumber: '+91 98765 43210',
+        isActive: true,
+        createdAt: '2026-05-01T10:00:00.000Z',
+        updatedAt: '2026-05-01T10:00:00.000Z',
+      },
+      {
+        collectionCentreId: 2,
+        name: 'North Branch Distribution Point',
+        location: 'Eidgah Ground Gate 2, North Zone',
+        address: 'Eidgah Ground Gate 2, North Zone',
+        contactPerson: 'Tariq Ansari',
+        contactPersonName: 'Tariq Ansari',
+        contactNumber: '+91 98765 43211',
+        isActive: true,
+        createdAt: '2026-05-02T10:00:00.000Z',
+        updatedAt: '2026-05-02T10:00:00.000Z',
+      },
+      {
+        collectionCentreId: 3,
+        name: 'South Zone Community Hall',
+        location: 'Community Hall Road, South Area',
+        contactPerson: 'Zubair Qureshi',
+        contactNumber: '+91 98765 43212',
+        isActive: true,
+        createdAt: '2026-05-03T10:00:00.000Z',
+        updatedAt: '2026-05-03T10:00:00.000Z',
+      },
+      {
+        collectionCentreId: 4,
+        name: 'East Suburb Depot',
+        location: 'Old Highway Junction, East Sector',
+        contactPerson: 'Salman Sheikh',
+        contactNumber: '+91 98765 43213',
+        isActive: false,
+        createdAt: '2026-05-04T10:00:00.000Z',
+        updatedAt: '2026-05-04T10:00:00.000Z',
+      },
+    ],
   };
+}
+
+export function deduplicateBookings(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  return list.filter((b, idx) => {
+    const rawKey = b?.receiptNumber || b?.hissaBookingId || b?.bookingId || b?.id || (b?.qurbaniPersonName ? `${b.qurbaniPersonName}-${b.createdAt}` : `idx-${idx}`);
+    const cleanKey = String(rawKey).replace(/^#/, '').trim();
+    if (!cleanKey) return true;
+    if (seen.has(cleanKey)) return false;
+    seen.add(cleanKey);
+    return true;
+  });
 }
 
 export function loadInitialData() {
@@ -273,15 +332,18 @@ export function loadInitialData() {
     const admins = localStorage.getItem('qurbani_admins');
     const audits = localStorage.getItem('qurbani_audit_logs');
     const expenses = localStorage.getItem('qurbani_expenses');
+    const centres = localStorage.getItem('qurbani_collection_centres');
 
     if (animals && bookings && days && admins && audits) {
+      const parsedBookings = deduplicateBookings(JSON.parse(bookings));
       return {
         inventory: JSON.parse(animals),
-        bookings: JSON.parse(bookings),
+        bookings: parsedBookings,
         days: JSON.parse(days),
         admins: JSON.parse(admins),
         audits: JSON.parse(audits),
         expenses: expenses ? JSON.parse(expenses) : seedData().expenses,
+        collectionCentres: centres ? JSON.parse(centres) : seedData().collectionCentres,
       };
     }
 
@@ -289,6 +351,8 @@ export function loadInitialData() {
     if (legacy) {
       const parsed = JSON.parse(legacy);
       if (!parsed.expenses) parsed.expenses = seedData().expenses;
+      if (!parsed.collectionCentres) parsed.collectionCentres = seedData().collectionCentres;
+      if (parsed.bookings) parsed.bookings = deduplicateBookings(parsed.bookings);
       return parsed;
     }
   } catch (err) {
@@ -299,15 +363,19 @@ export function loadInitialData() {
 
 export function persistData(data) {
   try {
+    const cleanBookings = deduplicateBookings(data.bookings);
     localStorage.setItem('qurbani_animals', JSON.stringify(data.inventory));
-    localStorage.setItem('qurbani_bookings', JSON.stringify(data.bookings));
+    localStorage.setItem('qurbani_bookings', JSON.stringify(cleanBookings));
     localStorage.setItem('qurbani_days', JSON.stringify(data.days));
     localStorage.setItem('qurbani_admins', JSON.stringify(data.admins));
     localStorage.setItem('qurbani_audit_logs', JSON.stringify(data.audits));
     if (data.expenses) {
       localStorage.setItem('qurbani_expenses', JSON.stringify(data.expenses));
     }
-    localStorage.setItem('qurbani-demo-data', JSON.stringify(data));
+    if (data.collectionCentres) {
+      localStorage.setItem('qurbani_collection_centres', JSON.stringify(data.collectionCentres));
+    }
+    localStorage.setItem('qurbani-demo-data', JSON.stringify({ ...data, bookings: cleanBookings }));
   } catch (err) {
     console.error('Failed to save to localStorage:', err);
   }

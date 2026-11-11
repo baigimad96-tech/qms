@@ -8,21 +8,28 @@ import {
   Filter,
   Pencil,
   AlertTriangle,
+  AlertCircle,
   Check,
   Download,
   Trash2,
   Layers,
+  Building2,
+  Users,
+  User,
+  Plus,
+  Minus,
 } from 'lucide-react';
 import { PageIntro, BookingsTable } from './Dashboard.jsx';
 import Modal, { ModalActions, Field } from '../components/Modal.jsx';
 import { EmptyState } from '../components/Table.jsx';
 import BookingDetails from './BookingDetails.jsx';
 import ProjectDropdown from '../components/ProjectDropdown.jsx';
-import { formatNumber } from '../data/mockData.js';
+import { formatNumber, deduplicateBookings } from '../data/mockData.js';
 import { api } from '../services/api.js';
 import { getUser } from '../utils/auth.js';
 import { getErrorMessage } from './AnimalInventory.jsx';
 import { downloadReceipt } from '../utils/receipt.js';
+import { getCollectionCentres } from '../services/collectionCentreApi.js';
 import {
   MAX_COST_PER_HISSA,
   MAX_COST_DIGITS,
@@ -120,6 +127,12 @@ export function normalizeBooking(b) {
         : b.meatWanted || 'Yes',
     bookedBy: b.bookedByAdminName || b.bookedBy || 'System Administrator',
     bookedByAdminName: b.bookedByAdminName || b.bookedBy || 'System Administrator',
+    collectionCentreId: b.collectionCentreId || b.collectionCentre?.collectionCentreId || b.collectionCentre?.id || null,
+    collectionCentreName: b.collectionCentreName || b.collectionCentre?.name || null,
+    collectionCentre: b.collectionCentre || (b.collectionCentreName ? { name: b.collectionCentreName, id: b.collectionCentreId } : null),
+    members: Array.isArray(b.members) ? b.members : [],
+    bookingMode: b.bookingMode || (Array.isArray(b.members) && b.members.length > 1 ? 'multi' : 'single'),
+    isFamily: b.isFamily || (Array.isArray(b.members) && b.members.length > 1) || (b.qurbaniPersonName || b.personName || '').toLowerCase().includes('family'),
     phone: b.phone || b.phoneNumber || b.contactNumber || b.contact || '',
     createdAt: b.createdAt || new Date().toISOString(),
     updatedAt: b.updatedAt || b.createdAt || new Date().toISOString(),
@@ -130,6 +143,7 @@ export function BookingEditModal({
   booking,
   animals,
   days,
+  centres = [],
   onClose,
   onSave,
   isSaving,
@@ -152,14 +166,96 @@ export function BookingEditModal({
       : (booking.perHissaCost || booking.cost || '')
   );
 
+  const initialCentreId = String(
+    booking.collectionCentreId ||
+    booking.collectionCentre?.collectionCentreId ||
+    booking.collectionCentre?.id ||
+    (centres.find((c) => c.name === booking.collectionCentreName)?.collectionCentreId) ||
+    ''
+  );
+
+  const rawMembers = Array.isArray(booking.members) ? booking.members : [];
+  const isCreatedAsMulti = Boolean(
+    booking.bookingMode === 'multi' ||
+    booking.bookingType === 'multi' ||
+    booking.isFamily === true ||
+    rawMembers.length > 1 ||
+    (booking.qurbaniPersonName || booking.personName || '').toLowerCase().includes('family')
+  );
+
+  const initialMembers = useMemo(() => {
+    if (rawMembers.length > 0) {
+      return rawMembers.map((m) => ({
+        bookingMemberId: m.bookingMemberId || m.id,
+        memberName: m.memberName || '',
+        hissaCount: Number(m.hissaCount) || 1,
+      }));
+    }
+    return [
+      { memberName: initialName, hissaCount: 1 },
+      { memberName: '', hissaCount: 1 },
+    ];
+  }, [rawMembers, initialName]);
+
+  const [bookingMode, setBookingMode] = useState(() => (isCreatedAsMulti ? 'multi' : 'single'));
+  const [members, setMembers] = useState(() => initialMembers);
+  const [memberErrors, setMemberErrors] = useState({});
+
   const [form, setForm] = useState({
     personName: initialName,
     animalId: String(booking.animalId || ''),
     qurbaniDayId: String(booking.qurbaniDayId || booking.qurbaniDay || ''),
+    collectionCentreId: initialCentreId,
     hissa: String(booking.totalHissa !== undefined ? booking.totalHissa : (booking.hissa || 1)),
     cost: initialCost,
     meatWanted: booking.meatWanted === true || booking.meatWanted === 'Yes' ? 'Yes' : 'No',
   });
+
+  // Keep form & members updated if booking object is enriched asynchronously
+  useEffect(() => {
+    const isMulti = Boolean(
+      booking.bookingMode === 'multi' ||
+      booking.bookingType === 'multi' ||
+      booking.isFamily === true ||
+      (Array.isArray(booking.members) && booking.members.length > 1) ||
+      (booking.qurbaniPersonName || booking.personName || '').toLowerCase().includes('family')
+    );
+    if (isMulti) {
+      setBookingMode('multi');
+    }
+    if (Array.isArray(booking.members) && booking.members.length > 0) {
+      setMembers(
+        booking.members.map((m) => ({
+          bookingMemberId: m.bookingMemberId || m.id,
+          memberName: m.memberName || '',
+          hissaCount: Number(m.hissaCount) || 1,
+        }))
+      );
+    }
+    const cId =
+      booking.collectionCentreId ||
+      booking.collectionCentre?.collectionCentreId ||
+      booking.collectionCentre?.id ||
+      (centres.find((c) => c.name === booking.collectionCentreName)?.collectionCentreId) ||
+      '';
+    if (cId) {
+      setForm((prev) => ({
+        ...prev,
+        collectionCentreId: prev.collectionCentreId || String(cId),
+      }));
+    }
+  }, [
+    booking.members,
+    booking.bookingMode,
+    booking.bookingType,
+    booking.isFamily,
+    booking.qurbaniPersonName,
+    booking.personName,
+    booking.collectionCentreId,
+    booking.collectionCentre,
+    booking.collectionCentreName,
+    centres,
+  ]);
 
   const activeSeasonYear = getActiveSeasonYear();
 
@@ -182,7 +278,7 @@ export function BookingEditModal({
   const validatePersonName = (val) => {
     const trimmed = (val || '').trim();
     if (!trimmed) {
-      return 'Participant name is required';
+      return bookingMode === 'multi' ? 'Family / Group name is required' : 'Participant name is required';
     }
     if (!/^[a-zA-Z\s-]+$/.test(trimmed) || !/[a-zA-Z]/.test(trimmed)) {
       return 'Please enter a valid name containing alphabetical characters, spaces, and hyphens only.';
@@ -201,18 +297,67 @@ export function BookingEditModal({
   const handlePersonNameChange = (e) => {
     const val = e.target.value;
     set('personName', val);
-    if (!val.trim()) {
-      setPersonNameError('Participant name is required');
-    } else if (!/^[a-zA-Z\s-]+$/.test(val) || !/[a-zA-Z]/.test(val)) {
-      setPersonNameError('Please enter a valid name containing alphabetical characters, spaces, and hyphens only.');
-    } else {
-      setPersonNameError('');
-    }
+    const err = validatePersonName(val);
+    setPersonNameError(err);
   };
 
   const handleAnimalChange = (newAnimalId) => {
     set('animalId', newAnimalId);
   };
+
+  const handleMemberChange = (index, field, value) => {
+    setMembers((prev) => {
+      const next = [...prev];
+      if (field === 'hissaCount') {
+        const cleaned = String(value).replace(/\D/g, '');
+        const count = cleaned === '' ? 1 : Math.max(1, Number(cleaned));
+        next[index] = { ...next[index], hissaCount: count };
+      } else {
+        next[index] = { ...next[index], [field]: value };
+      }
+      return next;
+    });
+
+    if (field === 'memberName') {
+      const trimmed = (value || '').trim();
+      setMemberErrors((prev) => {
+        const next = { ...prev };
+        if (!trimmed) {
+          next[index] = `Member #${index + 1} name is required`;
+        } else if (!/^[a-zA-Z\s-]+$/.test(trimmed) || !/[a-zA-Z]/.test(trimmed)) {
+          next[index] = 'Alphabetical characters only';
+        } else {
+          delete next[index];
+        }
+        return next;
+      });
+    }
+  };
+
+  const handleAddMember = () => {
+    setMembers((prev) => [...prev, { memberName: '', hissaCount: 1 }]);
+  };
+
+  const handleRemoveMember = (index) => {
+    if (members.length <= 2) return;
+    setMembers((prev) => prev.filter((_, i) => i !== index));
+    setMemberErrors((prev) => {
+      const next = {};
+      Object.keys(prev).forEach((k) => {
+        const idx = Number(k);
+        if (idx < index) next[idx] = prev[idx];
+        else if (idx > index) next[idx - 1] = prev[idx];
+      });
+      return next;
+    });
+  };
+
+  const effectiveTotalHissa = useMemo(() => {
+    if (bookingMode === 'multi') {
+      return members.reduce((sum, m) => sum + (Number(m.hissaCount) || 0), 0);
+    }
+    return Number(form.hissa) || 0;
+  }, [bookingMode, form.hissa, members]);
 
   const handleCostKeyDown = (e) => {
     if (
@@ -451,7 +596,6 @@ export function BookingEditModal({
   };
 
   const numCost = Number(form.cost);
-  const numHissa = Number(form.hissa);
   const costWholePart = String(form.cost || '').split('.')[0].replace(/\D/g, '');
 
   const isCostValid =
@@ -461,19 +605,26 @@ export function BookingEditModal({
     numCost > 0 &&
     costWholePart.length <= MAX_COST_DIGITS &&
     numCost <= MAX_COST_PER_HISSA &&
-    (numHissa <= 0 || isNaN(numHissa) || numHissa * numCost <= MAX_TOTAL_BOOKING_COST) &&
+    (effectiveTotalHissa <= 0 || isNaN(effectiveTotalHissa) || effectiveTotalHissa * numCost <= MAX_TOTAL_BOOKING_COST) &&
     !costError;
+
   const isHissaValid =
-    form.hissa !== '' &&
-    !isNaN(numHissa) &&
-    Number.isInteger(numHissa) &&
-    numHissa >= 1 &&
-    numHissa <= MAX_HISSA_COUNT &&
-    !hissaError;
+    bookingMode === 'multi'
+      ? members.length >= 2 &&
+        effectiveTotalHissa >= 1 &&
+        effectiveTotalHissa <= MAX_HISSA_COUNT &&
+        !members.some((m) => !m.memberName?.trim()) &&
+        Object.keys(memberErrors).length === 0
+      : form.hissa !== '' &&
+        !isNaN(Number(form.hissa)) &&
+        Number.isInteger(Number(form.hissa)) &&
+        Number(form.hissa) >= 1 &&
+        Number(form.hissa) <= MAX_HISSA_COUNT &&
+        !hissaError;
 
   const calculatedTotal =
-    isCostValid && isHissaValid && numHissa > 0 && numCost > 0
-      ? numHissa * numCost
+    isCostValid && isHissaValid && effectiveTotalHissa > 0 && numCost > 0
+      ? effectiveTotalHissa * numCost
       : 0;
   const totalFormatted = formatTotalAmount(calculatedTotal);
 
@@ -484,10 +635,43 @@ export function BookingEditModal({
       setPersonNameError(err);
       return;
     }
-    if (!isHissaValid) {
-      setHissaError('Total hissa must be at least 1.');
-      return;
+
+    if (bookingMode === 'multi') {
+      if (members.length < 2) {
+        setHissaError('Family booking requires at least 2 members.');
+        return;
+      }
+      const newErrors = {};
+      let hasMemberErr = false;
+      members.forEach((m, idx) => {
+        const trimmed = (m.memberName || '').trim();
+        if (!trimmed) {
+          newErrors[idx] = `Member #${idx + 1} name is required`;
+          hasMemberErr = true;
+        } else if (!/^[a-zA-Z\s-]+$/.test(trimmed) || !/[a-zA-Z]/.test(trimmed)) {
+          newErrors[idx] = 'Alphabetical characters only';
+          hasMemberErr = true;
+        }
+      });
+      if (hasMemberErr) {
+        setMemberErrors(newErrors);
+        return;
+      }
+      if (effectiveTotalHissa < 1) {
+        setHissaError('Total hissa must be at least 1.');
+        return;
+      }
+      if (effectiveTotalHissa > MAX_HISSA_COUNT) {
+        setHissaError(`Total hissa cannot exceed ${MAX_HISSA_COUNT.toLocaleString('en-IN')}.`);
+        return;
+      }
+    } else {
+      if (!isHissaValid) {
+        setHissaError('Total hissa must be at least 1.');
+        return;
+      }
     }
+
     const costWholeDigits = String(form.cost || '').split('.')[0].replace(/\D/g, '').length;
     if (costWholeDigits > MAX_COST_DIGITS || numCost > MAX_COST_PER_HISSA) {
       setCostError(
@@ -499,10 +683,23 @@ export function BookingEditModal({
       setCostError('Please enter a valid positive cost per Hissa.');
       return;
     }
+
     setPersonNameError('');
     setCostError('');
     setHissaError('');
-    onSave(form);
+
+    onSave({
+      ...form,
+      bookingMode,
+      hissa: String(effectiveTotalHissa),
+      members: bookingMode === 'multi'
+        ? members.map((m) => ({
+            ...(m.bookingMemberId ? { bookingMemberId: m.bookingMemberId } : {}),
+            memberName: m.memberName.trim(),
+            hissaCount: Number(m.hissaCount) || 1,
+          }))
+        : [{ memberName: form.personName.trim(), hissaCount: Number(form.hissa) || 1 }],
+    });
   };
 
   const receiptCode = String(booking.receiptNumber || booking.id || '').replace(/^#/, '');
@@ -510,8 +707,13 @@ export function BookingEditModal({
   return (
     <Modal
       title={`Edit booking ${receiptCode}`}
-      description="Update participant details, allocated Hissa, animal, or day."
+      description={
+        bookingMode === 'multi'
+          ? 'Update family group details, allocated Hissa, animal, day, collection centre, or family members.'
+          : 'Update participant details, allocated Hissa, animal, day, or collection centre.'
+      }
       onClose={onClose}
+      maxWidth="max-w-2xl sm:max-w-2xl"
     >
       {apiError && (
         <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-[#f3a69b] bg-[#fff3f0] p-3.5 text-xs text-[#a63f32] dark:border-[#5c2420] dark:bg-[#331614] dark:text-[#fca5a5]">
@@ -521,13 +723,47 @@ export function BookingEditModal({
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Field label="Qurbani person name">
+        {/* Booking Type Indicator (Locked to original booking creation type) */}
+        <div className="flex items-center justify-between rounded-xl border border-[#ded8ca] bg-[#fbf9f4]/80 px-3.5 py-2.5 dark:border-[#1e493b] dark:bg-[#11271f]/60">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#6b776f] dark:text-[#9bb8ab]">
+              Booking Type:
+            </span>
+            <span
+              data-testid="badge-edit-booking-type"
+              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold ${
+                bookingMode === 'multi'
+                  ? 'bg-[#246b59]/10 text-[#246b59] dark:bg-[#52c99a]/10 dark:text-[#52c99a]'
+                  : 'bg-[#eef7f2] text-[#246b59] dark:bg-[#153427] dark:text-[#52c99a]'
+              }`}
+            >
+              {bookingMode === 'multi' ? (
+                <>
+                  <Users size={14} className="shrink-0" />
+                  <span>Family / Multi-Person Booking</span>
+                </>
+              ) : (
+                <>
+                  <User size={14} className="shrink-0" />
+                  <span>Single Person Booking</span>
+                </>
+              )}
+            </span>
+          </div>
+          {bookingMode === 'multi' && (
+            <span className="text-[11px] font-semibold text-[#78847c] dark:text-[#92b1a3]">
+              {members.length} {members.length === 1 ? 'member' : 'members'}
+            </span>
+          )}
+        </div>
+
+        <Field label={bookingMode === 'multi' ? 'Family / Group Booking Name' : 'Qurbani person name'}>
           <input
             data-testid="input-edit-person-name"
             className={`input ${personNameError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
             value={form.personName}
             onChange={handlePersonNameChange}
-            placeholder="Participant or family name"
+            placeholder={bookingMode === 'multi' ? 'Enter family or group name' : 'Participant or family name'}
             required
           />
           {personNameError && (
@@ -538,7 +774,7 @@ export function BookingEditModal({
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Animal inventory batch">
+          <Field label="Animal Inventory Batch">
             <select
               data-testid="select-edit-animal"
               className="input"
@@ -591,47 +827,243 @@ export function BookingEditModal({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Number of Hissa">
-            <input
-              data-testid="input-edit-hissa"
-              className={`input ${hissaError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
-              type="text"
-              inputMode="numeric"
-              maxLength={MAX_HISSA_DIGITS}
-              value={form.hissa}
-              onKeyDown={handleHissaKeyDown}
-              onChange={handleHissaChange}
-              onPaste={handleHissaPaste}
-              required
-            />
-            {hissaError && (
-              <p data-testid="error-edit-hissa" className="mt-1.5 text-xs text-[#a63f32] dark:text-[#fca5a5]">
-                {hissaError}
-              </p>
-            )}
+          <Field label="Collection Centre (Optional)">
+            <select
+              data-testid="select-edit-collection-centre"
+              className="input"
+              value={form.collectionCentreId}
+              onChange={(e) => set('collectionCentreId', e.target.value)}
+            >
+              <option value="">Choose a collection centre (optional)</option>
+              {centres.map((centre) => {
+                const loc = (centre.location || centre.address || '').trim();
+                const cid = centre.collectionCentreId || centre.id;
+                return (
+                  <option key={cid} value={cid}>
+                    {centre.name}{loc ? ` (${loc})` : ''}
+                  </option>
+                );
+              })}
+            </select>
           </Field>
 
-          <Field label="Cost per Hissa (₹)">
-            <input
-              data-testid="input-edit-cost"
-              className={`input ${costError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
-              type="text"
-              inputMode="decimal"
-              maxLength={MAX_COST_INPUT_LENGTH}
-              value={form.cost}
-              onKeyDown={handleCostKeyDown}
-              onChange={handleCostChange}
-              onPaste={handleCostPaste}
-              placeholder="e.g. 15000"
-              required
-            />
-            {costError && (
-              <p data-testid="error-edit-cost" className="mt-1.5 text-xs text-[#a63f32] dark:text-[#fca5a5]">
-                {costError}
-              </p>
-            )}
+          <Field label="Meat wanted">
+            <div className="grid grid-cols-2 gap-3">
+              {['Yes', 'No'].map((choice) => (
+                <button
+                  type="button"
+                  key={choice}
+                  onClick={() => set('meatWanted', choice)}
+                  className={`flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-xs font-bold transition ${
+                    form.meatWanted === choice
+                      ? 'border-[#246b59] bg-[#e4efe7] text-[#246b59] dark:border-[#4ade80] dark:bg-[#16382b] dark:text-[#4ade80]'
+                      : 'border-[#ded8ca] bg-[#faf6ed] text-[#7b867e] hover:border-[#b8c9c0] dark:border-[#21473a] dark:bg-[#122820] dark:text-[#92b1a3]'
+                  }`}
+                >
+                  {form.meatWanted === choice && <Check size={14} />}
+                  {choice}
+                </button>
+              ))}
+            </div>
           </Field>
         </div>
+
+        {/* Single Mode: Hissa & Cost */}
+        {bookingMode === 'single' ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Number of Hissa">
+              <input
+                data-testid="input-edit-hissa"
+                className={`input ${hissaError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
+                type="text"
+                inputMode="numeric"
+                maxLength={MAX_HISSA_DIGITS}
+                value={form.hissa}
+                onKeyDown={handleHissaKeyDown}
+                onChange={handleHissaChange}
+                onPaste={handleHissaPaste}
+                required
+              />
+              {hissaError && (
+                <p data-testid="error-edit-hissa" className="mt-1.5 text-xs text-[#a63f32] dark:text-[#fca5a5]">
+                  {hissaError}
+                </p>
+              )}
+            </Field>
+
+            <Field label="Cost per Hissa (₹)">
+              <input
+                data-testid="input-edit-cost"
+                className={`input ${costError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
+                type="text"
+                inputMode="decimal"
+                maxLength={MAX_COST_INPUT_LENGTH}
+                value={form.cost}
+                onKeyDown={handleCostKeyDown}
+                onChange={handleCostChange}
+                onPaste={handleCostPaste}
+                placeholder="e.g. 15000"
+                required
+              />
+              {costError && (
+                <p data-testid="error-edit-cost" className="mt-1.5 text-xs text-[#a63f32] dark:text-[#fca5a5]">
+                  {costError}
+                </p>
+              )}
+            </Field>
+          </div>
+        ) : (
+          <div>
+            <Field label="Cost per Hissa (₹)">
+              <input
+                data-testid="input-edit-cost"
+                className={`input ${costError ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
+                type="text"
+                inputMode="decimal"
+                maxLength={MAX_COST_INPUT_LENGTH}
+                value={form.cost}
+                onKeyDown={handleCostKeyDown}
+                onChange={handleCostChange}
+                onPaste={handleCostPaste}
+                placeholder="e.g. 15000"
+                required
+              />
+              {costError && (
+                <p data-testid="error-edit-cost" className="mt-1.5 text-xs text-[#a63f32] dark:text-[#fca5a5]">
+                  {costError}
+                </p>
+              )}
+            </Field>
+          </div>
+        )}
+
+        {/* Multi Mode: Family Members Breakdown */}
+        {bookingMode === 'multi' && (
+          <div className="rounded-xl border border-[#ded8ca] bg-[#fbf9f4]/60 p-4 dark:border-[#1e493b] dark:bg-[#11271f]/50 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eee8dc] pb-2.5 dark:border-[#1e493b]">
+              <div className="flex items-center gap-2">
+                <div className="grid h-7 w-7 place-items-center rounded-lg bg-[#246b59]/10 text-[#246b59] dark:bg-[#52c99a]/10 dark:text-[#52c99a]">
+                  <Users size={15} />
+                </div>
+                <div>
+                  <h4 className="font-display text-xs sm:text-sm font-bold text-[#183f35] dark:text-[#edf6f2]">
+                    Family Members &amp; Hissa Breakdown
+                  </h4>
+                  <p className="text-[11px] text-[#7b867e] dark:text-[#92b1a3]">
+                    Edit family members and their designated Hissa count.
+                  </p>
+                </div>
+              </div>
+              <span className="rounded-full bg-[#e4efe7] px-2.5 py-0.5 text-xs font-bold text-[#246b59] dark:bg-[#193a2f] dark:text-[#4ade80]">
+                Total Hissas: {effectiveTotalHissa}
+              </span>
+            </div>
+
+            <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
+              {members.map((member, index) => {
+                const memberCost = (Number(member.hissaCount) || 0) * (Number(form.cost) || 0);
+                const hasErr = Boolean(memberErrors[index]);
+                return (
+                  <div
+                    key={index}
+                    data-testid={`edit-member-row-${index}`}
+                    className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 rounded-xl border p-2.5 transition-all ${
+                      hasErr
+                        ? 'border-[#dc2626]/60 bg-[#fff8f8] dark:border-[#dc2626]/50 dark:bg-[#201414]'
+                        : 'border-[#e5dfd2] bg-white dark:border-[#1e493b] dark:bg-[#142e24]'
+                    }`}
+                  >
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#eee8dc] text-xs font-bold text-[#183f35] dark:bg-[#1e493b] dark:text-[#edf6f2]">
+                      {index + 1}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <input
+                        type="text"
+                        data-testid={`input-edit-member-name-${index}`}
+                        placeholder={`Member #${index + 1} name`}
+                        value={member.memberName}
+                        onChange={(e) => handleMemberChange(index, 'memberName', e.target.value)}
+                        className={`input !py-1.5 !text-xs placeholder:text-[#7b867e]/50 placeholder:italic dark:placeholder:text-[#92b1a3]/50 ${
+                          hasErr ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''
+                        }`}
+                        required
+                      />
+                      {hasErr && (
+                        <p className="mt-1 text-[11px] text-[#a63f32] dark:text-[#fca5a5]">
+                          {memberErrors[index]}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] font-semibold text-[#7b867e] dark:text-[#92b1a3]">Hissa:</span>
+                        <div className="flex items-center rounded-lg border border-[#ded8ca] bg-[#fbf9f4] dark:border-[#1e493b] dark:bg-[#11241e] overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => handleMemberChange(index, 'hissaCount', Math.max(1, (Number(member.hissaCount) || 1) - 1))}
+                            disabled={Number(member.hissaCount) <= 1}
+                            className="px-2 py-1 text-xs font-bold text-[#7b867e] hover:bg-[#eee8dc] hover:text-[#183f35] disabled:opacity-30 dark:text-[#92b1a3] dark:hover:bg-[#193a2f] dark:hover:text-white transition"
+                          >
+                            <Minus size={11} />
+                          </button>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={member.hissaCount}
+                            onChange={(e) => handleMemberChange(index, 'hissaCount', e.target.value)}
+                            className="w-8 text-center font-bold text-xs bg-transparent py-0.5 border-0 focus:outline-none focus:ring-0 text-[#183f35] dark:text-[#edf6f2]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleMemberChange(index, 'hissaCount', (Number(member.hissaCount) || 0) + 1)}
+                            className="px-2 py-1 text-xs font-bold text-[#7b867e] hover:bg-[#eee8dc] hover:text-[#183f35] dark:text-[#92b1a3] dark:hover:bg-[#193a2f] dark:hover:text-white transition"
+                          >
+                            <Plus size={11} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {Number(form.cost) > 0 && (
+                        <span className="inline-flex items-center rounded-md bg-[#eaf4ee] px-2 py-0.5 text-xs font-mono font-bold text-[#246b59] dark:bg-[#16382b] dark:text-[#52c99a]">
+                          ₹{formatNumber(memberCost)}
+                        </span>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMember(index)}
+                        disabled={members.length <= 2}
+                        title={members.length <= 2 ? 'Family booking requires a minimum of 2 members' : `Remove member ${index + 1}`}
+                        className="p-1 rounded-lg text-[#a63f32] hover:bg-[#fff0ed] hover:text-[#dc2626] disabled:opacity-20 disabled:cursor-not-allowed dark:text-[#fca5a5] dark:hover:bg-[#331614] transition"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <button
+                type="button"
+                data-testid="button-edit-add-member"
+                onClick={handleAddMember}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-[#246b59]/30 bg-white px-3 py-1.5 text-xs font-bold text-[#246b59] shadow-sm transition hover:bg-[#246b59]/5 dark:border-[#52c99a]/30 dark:bg-[#142e24] dark:text-[#52c99a] dark:hover:bg-[#193a2f]"
+              >
+                <Plus size={13} />
+                <span>Add Family Member</span>
+              </button>
+
+              <span className="text-[11px] font-medium text-[#567a6d] dark:text-[#90b3a3] flex items-center gap-1">
+                <Check size={12} className="text-[#246b59] dark:text-[#52c99a]" />
+                <span>{effectiveTotalHissa} {effectiveTotalHissa === 1 ? 'Hissa' : 'Hissas'} across {members.length} members</span>
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Calculated Total Cost Summary Card */}
         <div className="rounded-xl border border-[#b9d9c4] bg-[#edf8ef] p-3.5 text-xs dark:border-[#225744] dark:bg-[#132c22] min-w-0 max-w-full overflow-hidden">
@@ -649,30 +1081,10 @@ export function BookingEditModal({
           </div>
           <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 text-[11px] text-[#4f7b6b] dark:text-[#8ba79b]">
             <span className="truncate max-w-full">
-              Formula: {form.hissa || 0} Hissa × ₹{formatNumber(Number(form.cost) || 0)}
+              Formula: {effectiveTotalHissa} Hissa × ₹{formatNumber(Number(form.cost) || 0)}
             </span>
           </div>
         </div>
-
-        <Field label="Meat wanted">
-          <div className="grid grid-cols-2 gap-3">
-            {['Yes', 'No'].map((choice) => (
-              <button
-                type="button"
-                key={choice}
-                onClick={() => set('meatWanted', choice)}
-                className={`flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-xs font-bold transition ${
-                  form.meatWanted === choice
-                    ? 'border-[#246b59] bg-[#e4efe7] text-[#246b59] dark:border-[#4ade80] dark:bg-[#16382b] dark:text-[#4ade80]'
-                    : 'border-[#ded8ca] bg-[#faf6ed] text-[#7b867e] hover:border-[#b8c9c0] dark:border-[#21473a] dark:bg-[#122820] dark:text-[#92b1a3]'
-                }`}
-              >
-                {form.meatWanted === choice && <Check size={14} />}
-                {choice}
-              </button>
-            ))}
-          </div>
-        </Field>
 
         <ModalActions
           onClose={onClose}
@@ -878,11 +1290,19 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
   const [query, setQuery] = useState('');
   const [day, setDay] = useState('All days');
   const [meat, setMeat] = useState('All');
+  const [centreFilter, setCentreFilter] = useState('All centres');
 
-  const [bookings, setBookings] = useState(data.bookings || []);
+  const [bookings, setBookings] = useState(() => deduplicateBookings(data.bookings || []));
   const [days, setDays] = useState(data.days || []);
   const [animals, setAnimals] = useState(data.inventory || []);
+  const [centres, setCentres] = useState(data.collectionCentres || []);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (data?.bookings) {
+      setBookings((prev) => deduplicateBookings([...(data.bookings || []), ...(prev || [])]));
+    }
+  }, [data?.bookings]);
 
   const [editingBooking, setEditingBooking] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -897,10 +1317,11 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [bookingsRes, daysRes, animalsRes] = await Promise.all([
+      const [bookingsRes, daysRes, animalsRes, centresRes] = await Promise.all([
         api.get('/api/v1/hissa-bookings?size=500').catch(() => null),
         api.get('/api/v1/qurbani-days').catch(() => null),
         api.get('/api/v1/animals').catch(() => null),
+        getCollectionCentres().catch(() => null),
       ]);
 
       if (bookingsRes?.data) {
@@ -914,7 +1335,7 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
           rawBookings = bookingsRes.data;
         }
 
-        const normalized = rawBookings.map(normalizeBooking);
+        const normalized = deduplicateBookings(rawBookings.map(normalizeBooking));
         setBookings(normalized);
       }
 
@@ -946,6 +1367,24 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
           ? animalsRes.data
           : [];
         setAnimals(rawAnimals);
+      }
+
+      if (Array.isArray(centresRes) && centresRes.length > 0) {
+        const localCentres = Array.isArray(data?.collectionCentres) ? data.collectionCentres : [];
+        const merged = centresRes.map((sc) => {
+          const localMatch = localCentres.find(
+            (lc) => String(lc.collectionCentreId || lc.id) === String(sc.collectionCentreId || sc.id)
+          );
+          const loc = sc.location || sc.address || localMatch?.location || localMatch?.address || '';
+          return {
+            ...sc,
+            location: loc,
+            address: loc,
+          };
+        });
+        setCentres(merged);
+      } else if (data.collectionCentres && data.collectionCentres.length > 0) {
+        setCentres(data.collectionCentres);
       }
     } catch (err) {
       console.error('Failed to load bookings data', err);
@@ -996,6 +1435,8 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
         (b.animal && String(b.animal).toLowerCase().includes(q)) ||
         (b.animalType && String(b.animalType).toLowerCase().includes(q)) ||
         (b.bookedBy && b.bookedBy.toLowerCase().includes(q)) ||
+        (b.collectionCentreName && b.collectionCentreName.toLowerCase().includes(q)) ||
+        (Array.isArray(b.members) && b.members.some((m) => m.memberName && m.memberName.toLowerCase().includes(q))) ||
         (b.phone && String(b.phone).toLowerCase().includes(q)) ||
         (b.phoneNumber && String(b.phoneNumber).toLowerCase().includes(q)) ||
         (b.contactNumber && String(b.contactNumber).toLowerCase().includes(q)) ||
@@ -1003,8 +1444,13 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
 
       const matchesDay = day === 'All days' || b.day === day;
       const matchesMeat = meat === 'All' || b.meatWanted === meat;
+      const matchesCentre =
+        centreFilter === 'All centres' ||
+        b.collectionCentreName === centreFilter ||
+        b.collectionCentre?.name === centreFilter ||
+        (b.collectionCentreId && String(b.collectionCentreId) === String(centres.find((c) => c.name === centreFilter)?.collectionCentreId));
 
-      return matchesQuery && matchesDay && matchesMeat;
+      return matchesQuery && matchesDay && matchesMeat && matchesCentre;
     })
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
@@ -1046,13 +1492,17 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
     setApiError(null);
     setIsSaving(true);
 
-    const hissa = Number(form.hissa);
+    const isMulti = form.bookingMode === 'multi';
+    const effectiveHissa = isMulti && Array.isArray(form.members) && form.members.length > 0
+      ? form.members.reduce((sum, m) => sum + (Number(m.hissaCount) || 1), 0)
+      : Number(form.hissa);
+
     const cost = Number(form.cost);
 
     const trimmedName = (form.personName || '').trim();
     if (!trimmedName) {
       setIsSaving(false);
-      const err = 'Participant name is required';
+      const err = isMulti ? 'Family / Group name is required' : 'Participant name is required';
       setApiError(err);
       return notify?.(err, 'error');
     }
@@ -1062,7 +1512,40 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
       setApiError(err);
       return notify?.(err, 'error');
     }
-    if (!hissa || hissa < 1) {
+
+    if (isMulti) {
+      if (!Array.isArray(form.members) || form.members.length < 2) {
+        setIsSaving(false);
+        const err = 'Family / Multi-Person booking requires at least 2 family members.';
+        setApiError(err);
+        return notify?.(err, 'error');
+      }
+      for (let i = 0; i < form.members.length; i++) {
+        const m = form.members[i];
+        const mName = (m.memberName || '').trim();
+        if (!mName) {
+          setIsSaving(false);
+          const err = `Member #${i + 1} full name is required.`;
+          setApiError(err);
+          return notify?.(err, 'error');
+        }
+        if (!/^[a-zA-Z\s-]+$/.test(mName) || !/[a-zA-Z]/.test(mName)) {
+          setIsSaving(false);
+          const err = `Member #${i + 1} name must contain alphabetical characters, spaces, and hyphens only.`;
+          setApiError(err);
+          return notify?.(err, 'error');
+        }
+        const mCount = Number(m.hissaCount);
+        if (!mCount || mCount < 1 || !Number.isInteger(mCount)) {
+          setIsSaving(false);
+          const err = `Member #${i + 1} Hissa must be an integer of at least 1.`;
+          setApiError(err);
+          return notify?.(err, 'error');
+        }
+      }
+    }
+
+    if (!effectiveHissa || effectiveHissa < 1) {
       setIsSaving(false);
       const err = 'Total hissa must be at least 1';
       setApiError(err);
@@ -1075,7 +1558,7 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
     const activeSeasonYear = getActiveSeasonYear();
     if (targetAnimal && Number(targetAnimal.batchYear) !== Number(activeSeasonYear)) {
       setIsSaving(false);
-      const err = `Hissa booking is allowed only for animal inventory of the current year. Current year: ${activeSeasonYear}, animal batch year: ${targetAnimal.batchYear || 'N/A'}`;
+      const err = `Hissa booking is allowed only for Animal Inventory of the current year. Current year: ${activeSeasonYear}, animal batch year: ${targetAnimal.batchYear || 'N/A'}`;
       setApiError(err);
       return notify?.(err, 'error');
     }
@@ -1092,7 +1575,7 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
       return notify?.(err, 'error');
     }
 
-    const totalCost = hissa * cost;
+    const totalCost = effectiveHissa * cost;
     if (totalCost > MAX_TOTAL_BOOKING_COST) {
       setIsSaving(false);
       const err = `Total booking cost cannot exceed ₹${MAX_TOTAL_BOOKING_COST.toLocaleString('en-IN')} (₹10 Crore).`;
@@ -1109,11 +1592,28 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
     const payload = {
       animalId: Number(form.animalId || editingBooking.animalId),
       qurbaniDayId: Number(form.qurbaniDayId || editingBooking.qurbaniDayId),
+      collectionCentreId: form.collectionCentreId ? Number(form.collectionCentreId) : null,
       bookedByAdminName: adminName,
-      qurbaniPersonName: form.personName.trim(),
-      totalHissa: hissa,
+      qurbaniPersonName: trimmedName,
+      totalHissa: effectiveHissa,
       perHissaCost: cost,
       meatWanted: form.meatWanted === 'Yes' || form.meatWanted === true,
+      ...(isMulti && Array.isArray(form.members)
+        ? {
+            members: form.members.map((m) => {
+              const item = {
+                memberName: (m.memberName || '').trim(),
+                hissaCount: Number(m.hissaCount) || 1,
+              };
+              if (m.bookingMemberId) {
+                item.bookingMemberId = m.bookingMemberId;
+              }
+              return item;
+            }),
+          }
+        : {
+            members: [{ memberName: trimmedName, hissaCount: effectiveHissa }],
+          }),
     };
 
     try {
@@ -1125,15 +1625,23 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
             ? `Day ${updated.qurbaniDay}`
             : (updated.day || `Day ${updated.qurbaniDayId || form.qurbaniDayId}`);
 
+        const matchedCentre = centres.find(
+          (c) => String(c.collectionCentreId || c.id) === String(updated.collectionCentreId || form.collectionCentreId)
+        );
+        const resolvedCentreId = updated.collectionCentreId !== undefined
+          ? updated.collectionCentreId
+          : (form.collectionCentreId ? Number(form.collectionCentreId) : null);
+        const resolvedCentreName = updated.collectionCentreName || matchedCentre?.name || null;
+
         const normalized = {
           ...updated,
           id: updated.receiptNumber || String(updated.hissaBookingId || targetId),
           receiptNumber: updated.receiptNumber || editingBooking.receiptNumber,
           bookingId: updated.hissaBookingId || targetId,
           hissaBookingId: updated.hissaBookingId || targetId,
-          personName: updated.qurbaniPersonName || updated.personName || form.personName.trim(),
+          personName: updated.qurbaniPersonName || updated.personName || trimmedName,
           qurbaniPersonName:
-            updated.qurbaniPersonName || updated.personName || form.personName.trim(),
+            updated.qurbaniPersonName || updated.personName || trimmedName,
           animal: (
             typeof updated.animal === 'object' && updated.animal !== null
               ? updated.animal.animalType || updated.animal.animal_type || updated.animal.name || updated.animal.type || 'Animal'
@@ -1154,16 +1662,24 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
               ? updated.qurbaniDay
               : (updated.qurbaniDayId || Number(form.qurbaniDayId)),
           qurbaniDayId: updated.qurbaniDayId || Number(form.qurbaniDayId),
-          hissa: updated.totalHissa !== undefined ? updated.totalHissa : hissa,
-          totalHissa: updated.totalHissa !== undefined ? updated.totalHissa : hissa,
+          collectionCentreId: resolvedCentreId,
+          collectionCentreName: resolvedCentreName,
+          collectionCentre: matchedCentre || updated.collectionCentre || (resolvedCentreName ? { name: resolvedCentreName, id: resolvedCentreId } : null),
+          members: Array.isArray(updated.members) && updated.members.length > 0
+            ? updated.members
+            : Array.isArray(form.members) && form.members.length > 0
+            ? form.members
+            : editingBooking.members || [],
+          hissa: updated.totalHissa !== undefined ? updated.totalHissa : effectiveHissa,
+          totalHissa: updated.totalHissa !== undefined ? updated.totalHissa : effectiveHissa,
           cost:
             updated.totalHissaCost !== undefined
               ? updated.totalHissaCost
-              : hissa * cost,
+              : effectiveHissa * cost,
           totalHissaCost:
             updated.totalHissaCost !== undefined
               ? updated.totalHissaCost
-              : hissa * cost,
+              : effectiveHissa * cost,
           perHissaCost:
             updated.perHissaCost !== undefined ? updated.perHissaCost : cost,
           meatWanted:
@@ -1191,6 +1707,10 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
               String(b.hissaBookingId || b.id) === String(targetId) ? normalized : b
             ),
           }));
+        }
+
+        if (singleBookingDetail && String(singleBookingDetail.hissaBookingId || singleBookingDetail.id) === String(targetId)) {
+          setSingleBookingDetail(normalized);
         }
 
         setEditingBooking(null);
@@ -1317,11 +1837,11 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
   return (
     <div>
       <PageIntro
-        eyebrow="Hissa booking"
+        eyebrow="Hissa Booking"
         title="Bookings"
         description="Every confirmed Hissa commitment, searchable and ready to review."
         action={() => navigate('/new-booking')}
-        actionLabel="New booking"
+        actionLabel="New Booking"
         icon={ClipboardList}
       />
       <section className="card-surface rounded-2xl p-5 sm:p-6">
@@ -1410,14 +1930,29 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
             testId="select-meat-filter"
           />
 
+          {/* Custom Project Dropdown: Collection Centre */}
+          {centres.length > 0 && (
+            <ProjectDropdown
+              value={centreFilter === 'All centres' ? 'Centre: All' : `Centre: ${centreFilter}`}
+              onChange={(val) => {
+                const clean = val.replace(/^Centre:\s*/i, '');
+                setCentreFilter(clean);
+              }}
+              options={['Centre: All', ...centres.map((c) => `Centre: ${c.name}`)]}
+              icon={Building2}
+              testId="select-centre-filter"
+            />
+          )}
+
           {/* Reset Filters */}
-          {(day !== 'All days' || meat !== 'All' || query) && (
+          {(day !== 'All days' || meat !== 'All' || centreFilter !== 'All centres' || query) && (
             <button
               type="button"
               onClick={() => {
                 setQuery('');
                 setDay('All days');
                 setMeat('All');
+                setCentreFilter('All centres');
               }}
               className="h-10 rounded-xl px-3 text-xs font-bold text-[#a63f32] transition hover:bg-[#fff3f0] dark:text-[#fca5a5] dark:hover:bg-[#331614]"
             >
@@ -1430,9 +1965,28 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
           <BookingsTable
             bookings={filtered}
             onView={(id) => navigate(`/bookings/${id}`)}
-            onEdit={(b) => {
+            onEdit={async (b) => {
               setApiError(null);
               setEditingBooking(b);
+              const targetId =
+                b.hissaBookingId ||
+                b.bookingId ||
+                (typeof b.id === 'string' && b.id.includes('-') ? parseInt(b.id.split('-').pop(), 10) : b.id);
+              if (targetId) {
+                try {
+                  const res = await api.get(`/api/v1/hissa-bookings/${targetId}`);
+                  if (res?.data?.data) {
+                    const fresh = normalizeBooking(res.data.data);
+                    setEditingBooking((prev) =>
+                      prev && String(prev.hissaBookingId || prev.id) === String(b.hissaBookingId || b.id)
+                        ? { ...prev, ...fresh }
+                        : prev
+                    );
+                  }
+                } catch (err) {
+                  // Fallback silently to b
+                }
+              }
             }}
             onDelete={(b) => {
               setDeleteApiError(null);
@@ -1462,6 +2016,30 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
         <BookingDetails
           booking={activeBooking}
           onClose={() => navigate('/bookings')}
+          onEdit={async (b) => {
+            navigate('/bookings');
+            setApiError(null);
+            setEditingBooking(b);
+            const targetId =
+              b.hissaBookingId ||
+              b.bookingId ||
+              (typeof b.id === 'string' && b.id.includes('-') ? parseInt(b.id.split('-').pop(), 10) : b.id);
+            if (targetId) {
+              try {
+                const res = await api.get(`/api/v1/hissa-bookings/${targetId}`);
+                if (res?.data?.data) {
+                  const fresh = normalizeBooking(res.data.data);
+                  setEditingBooking((prev) =>
+                    prev && String(prev.hissaBookingId || prev.id) === String(b.hissaBookingId || b.id)
+                      ? { ...prev, ...fresh }
+                      : prev
+                  );
+                }
+              } catch (err) {
+                // Fallback silently to b
+              }
+            }
+          }}
           onDelete={(b) => {
             setDeleteApiError(null);
             setDeletingBooking(b);
@@ -1483,6 +2061,7 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
           booking={editingBooking}
           animals={animals}
           days={days}
+          centres={centres}
           onClose={() => setEditingBooking(null)}
           onSave={handleSaveBooking}
           isSaving={isSaving}

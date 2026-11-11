@@ -97,7 +97,7 @@ export default function ForgotPassword({ navigate, notify }) {
             <span className="text-[#e7b85f]">recovery.</span>
           </h1>
           <p className="mt-7 max-w-md text-lg leading-8 text-[#d5e2d9]">
-            Safely reset your workspace password to regain access to bookings, stock, and animal inventory.
+            Safely reset your workspace password to regain access to bookings, stock, and Animal Inventory.
           </p>
           <div className="mt-10 flex items-center gap-3 text-sm text-[#b4cbc0]">
             <ShieldCheck size={18} className="text-[#e7b85f]" /> Secure verification with reset token.

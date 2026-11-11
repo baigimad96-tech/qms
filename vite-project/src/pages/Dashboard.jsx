@@ -19,11 +19,13 @@ import {
   DollarSign,
   HeartHandshake,
   CheckCircle2,
+  Users,
+  Building2,
 } from 'lucide-react';
 import StatCard, { getConsistentFontSize } from '../components/StatCard.jsx';
 import Badge from '../components/Badge.jsx';
 import { TableScroll, Th, Td, IconButton } from '../components/Table.jsx';
-import { formatNumber, formatMoney, formatShortDate, formatDateTime } from '../data/mockData.js';
+import { formatNumber, formatMoney, formatShortDate, formatDateTime, deduplicateBookings } from '../data/mockData.js';
 import { api } from '../services/api.js';
 import { getUser } from '../utils/auth.js';
 import { downloadReceipt } from '../utils/receipt.js';
@@ -40,12 +42,16 @@ export function PageIntro({ eyebrow, title, description, action, actionLabel, ic
   return (
     <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
       <div>
-        <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[.16em] text-[#a5782b] dark:text-[#f3c46a]">
-          <Icon size={14} /> {eyebrow}
-        </div>
-        <h2 className="font-display text-3xl font-extrabold tracking-[-.05em] text-[#183f35] dark:text-[#edf6f2] sm:text-4xl">
-          {title}
-        </h2>
+        {eyebrow && (
+          <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[.16em] text-[#a5782b] dark:text-[#f3c46a]">
+            {Icon && <Icon size={14} />} {eyebrow}
+          </div>
+        )}
+        {title && (
+          <h1 className="font-display text-3xl font-extrabold tracking-[-.05em] text-[#183f35] dark:text-[#edf6f2] sm:text-4xl">
+            {title}
+          </h1>
+        )}
         {description && (
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6f7b74] dark:text-[#92b1a3]">{description}</p>
         )}
@@ -101,7 +107,7 @@ export function DayCapacity({ day, booked, capacity }) {
 }
 
 export function BookingsTable({
-  bookings,
+  bookings = [],
   onView,
   onEdit,
   onDownload,
@@ -110,6 +116,17 @@ export function BookingsTable({
   deletingId = null,
   compact = false,
 }) {
+  const uniqueBookings = React.useMemo(() => {
+    if (!Array.isArray(bookings)) return [];
+    const seen = new Set();
+    return bookings.filter((b, idx) => {
+      const idKey = String(b.hissaBookingId || b.receiptNumber || b.bookingId || b.id || `idx-${idx}`).replace(/^#/, '');
+      if (seen.has(idKey)) return false;
+      seen.add(idKey);
+      return true;
+    });
+  }, [bookings]);
+
   return (
     <TableScroll>
       <table className="w-full text-left text-sm">
@@ -128,7 +145,7 @@ export function BookingsTable({
           </tr>
         </thead>
         <tbody>
-          {bookings.map((b) => {
+          {uniqueBookings.map((b, index) => {
             const isDownloading =
               downloadingId &&
               (String(downloadingId) === String(b.hissaBookingId) ||
@@ -140,6 +157,11 @@ export function BookingsTable({
                 String(deletingId) === String(b.id));
 
             const displayId = String(b.receiptNumber || b.hissaBookingId || b.id || '').replace(/^#/, '');
+            const rowKey = b.hissaBookingId
+              ? `booking-id-${b.hissaBookingId}`
+              : displayId
+              ? `booking-rec-${displayId}-${index}`
+              : `booking-idx-${index}`;
             const personName = b.personName || b.qurbaniPersonName || 'Anonymous';
             const animalName =
               (typeof b.animal === 'string' && b.animal.trim()) ||
@@ -164,8 +186,8 @@ export function BookingsTable({
 
             return (
               <tr
-                key={displayId}
-                data-testid={`row-booking-${displayId}`}
+                key={rowKey}
+                data-testid={`row-booking-${displayId || rowKey}`}
                 className="border-t border-[#eee8dc] dark:border-[#1e493b] hover:bg-[#faf6ed]/40 dark:hover:bg-[#132c22]/40 transition-colors"
               >
                 <Td>
@@ -174,11 +196,27 @@ export function BookingsTable({
                   </span>
                 </Td>
                 <Td>
-                  <span className="font-semibold text-[#315246] dark:text-[#edf6f2]">{personName}</span>
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-[#315246] dark:text-[#edf6f2]">{personName}</span>
+                    {Array.isArray(b.members) && b.members.length > 1 && (
+                      <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-[#246b59] dark:text-[#52c99a]">
+                        <Users size={11} className="shrink-0" />
+                        <span>{b.members.length} family members</span>
+                      </span>
+                    )}
+                  </div>
                 </Td>
                 <Td className="dark:text-[#d3e3db]">{animalName}</Td>
                 <Td>
-                  <Badge status={dayDisplay} />
+                  <div className="flex flex-col gap-0.5">
+                    <Badge status={dayDisplay} />
+                    {(b.collectionCentreName || b.collectionCentre?.name) && (
+                      <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-[#7b867e] dark:text-[#8ba79b]">
+                        <Building2 size={10} className="shrink-0" />
+                        <span className="truncate max-w-[120px]">{b.collectionCentreName || b.collectionCentre?.name}</span>
+                      </span>
+                    )}
+                  </div>
                 </Td>
                 <Td className="font-bold text-[#315246] dark:text-[#edf6f2]">{formatNumber(hissaVal)}</Td>
                 <Td className="font-medium text-[#315246] dark:text-[#edf6f2]">{formatMoney(costVal)}</Td>
@@ -246,7 +284,7 @@ export default function Dashboard({ data, navigate, notify }) {
   // Baseline data states
   const [inventory, setInventory] = useState(data?.inventory || []);
   const [days, setDays] = useState(data?.days || []);
-  const [bookings, setBookings] = useState(data?.bookings || []);
+  const [bookings, setBookings] = useState(() => deduplicateBookings(data?.bookings || []));
 
   // Dashboard API live states (APIs 22 to 27)
   const [animalsByTypeStats, setAnimalsByTypeStats] = useState(null); // API 22
@@ -386,7 +424,7 @@ export default function Dashboard({ data, navigate, notify }) {
               createdAt: b.createdAt || new Date().toISOString(),
             };
           });
-          setRecentBookingsList(normalizedRecent);
+          setRecentBookingsList(deduplicateBookings(normalizedRecent));
         }
       }
 
@@ -458,7 +496,7 @@ export default function Dashboard({ data, navigate, notify }) {
             createdAt: b.createdAt || new Date().toISOString(),
           };
         });
-          setBookings(normalized);
+          setBookings(deduplicateBookings(normalized));
         }
       }
 

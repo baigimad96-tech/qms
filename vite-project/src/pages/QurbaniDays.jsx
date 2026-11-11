@@ -217,7 +217,7 @@ export default function QurbaniDays({ data, patchData, notify }) {
     <div>
       <PageIntro
         eyebrow="Planning"
-        // title="Qurbani days"
+        title="Qurbani Days"
         description="Protect the daily promise. These three days are fixed, only their total Hissa capacity can be adjusted."
         icon={CalendarDays}
       />

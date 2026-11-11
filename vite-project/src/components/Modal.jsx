@@ -27,6 +27,7 @@ export default function Modal({
   onClose,
   children,
   closeOnBack = true,
+  maxWidth = 'max-w-xl',
 }) {
   const onCloseRef = useRef(onClose);
   useEffect(() => {
@@ -107,7 +108,7 @@ export default function Modal({
       <div
         role="dialog"
         aria-modal="true"
-        className="card-surface relative my-auto w-full max-w-xl max-h-[88vh] overflow-y-auto overflow-x-hidden rounded-2xl bg-[#fffdf8] p-5 shadow-2xl sm:p-7 dark:bg-[#0f2820] min-w-0"
+        className={`card-surface relative my-auto w-full ${maxWidth} max-h-[88vh] overflow-y-auto overflow-x-hidden rounded-2xl bg-[#fffdf8] p-5 shadow-2xl sm:p-7 dark:bg-[#0f2820] min-w-0`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-6 flex items-start justify-between gap-4">

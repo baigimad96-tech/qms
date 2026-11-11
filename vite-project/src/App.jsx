@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { AlertTriangle, CircleCheck, Info, X } from 'lucide-react';
 
 import Sidebar from './components/Sidebar.jsx';
 import Header from './components/Header.jsx';
+import Modal from './components/Modal.jsx';
 
 import Login from './pages/Login.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
@@ -11,6 +12,7 @@ import ResetPassword from './pages/ResetPassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import AnimalInventory from './pages/AnimalInventory.jsx';
 import QurbaniDays from './pages/QurbaniDays.jsx';
+import CollectionCentres from './pages/CollectionCentres.jsx';
 import HissaBooking from './pages/HissaBooking.jsx';
 import Bookings from './pages/Bookings.jsx';
 import AdminManagement from './pages/AdminManagement.jsx';
@@ -87,7 +89,66 @@ function AppContent() {
     }
   }, [toast]);
 
+  const navBlockerRef = useRef(null);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState(null);
+
+  const registerNavBlocker = useCallback((blockerFn) => {
+    navBlockerRef.current = blockerFn;
+  }, []);
+
+  const unregisterNavBlocker = useCallback(() => {
+    navBlockerRef.current = null;
+  }, []);
+
+  const handleConfirmDiscard = () => {
+    const target = pendingNavigation;
+    setShowUnsavedModal(false);
+    setPendingNavigation(null);
+    navBlockerRef.current = null;
+    if (target?.isBack) {
+      window.history.back();
+    } else if (target?.path) {
+      saveCurrentScroll(locationObj.key, locationObj.pathname);
+      setMobileNav(false);
+      navigateBase(target.path, target.state);
+    }
+  };
+
+  const handleCancelLeave = () => {
+    setShowUnsavedModal(false);
+    setPendingNavigation(null);
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (navBlockerRef.current && navBlockerRef.current()) {
+        window.history.pushState(null, '', window.location.href);
+        setMobileNav(false);
+        setPendingNavigation({ isBack: true });
+        setShowUnsavedModal(true);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const navigate = (path, state) => {
+    if (
+      path === location ||
+      (path === '/new-booking' && (location === '/new-booking' || location === '/hissa-booking'))
+    ) {
+      setMobileNav(false);
+      return;
+    }
+
+    if (navBlockerRef.current && navBlockerRef.current()) {
+      setMobileNav(false);
+      setPendingNavigation({ path, state });
+      setShowUnsavedModal(true);
+      return;
+    }
+
     saveCurrentScroll(locationObj.key, locationObj.pathname);
     setMobileNav(false);
     navigateBase(path, state);
@@ -158,6 +219,7 @@ function AppContent() {
     if (path === '/dashboard') return 'Dashboard';
     if (path === '/inventory' || path === '/animals') return 'Animal Inventory';
     if (path === '/qurbani-days') return 'Qurbani Days';
+    if (path === '/collection-centres') return 'Collection Centres';
     if (path === '/new-booking' || path === '/hissa-booking') return 'Hissa Booking';
     if (path === '/bookings' || path.startsWith('/bookings/')) return 'Bookings';
     if (path === '/admins') return 'Admin Management';
@@ -185,7 +247,21 @@ function AppContent() {
               <Route path="/inventory" element={<AnimalInventory data={data} patchData={patchData} notify={notify} />} />
               <Route path="/animals" element={<Navigate to="/inventory" replace />} />
               <Route path="/qurbani-days" element={<QurbaniDays data={data} patchData={patchData} notify={notify} />} />
-              <Route path="/new-booking" element={<HissaBooking key={locationObj.key} data={data} patchData={patchData} notify={notify} navigate={navigate} />} />
+              <Route path="/collection-centres" element={<CollectionCentres data={data} patchData={patchData} notify={notify} />} />
+              <Route
+                path="/new-booking"
+                element={
+                  <HissaBooking
+                    key={locationObj.key}
+                    data={data}
+                    patchData={patchData}
+                    notify={notify}
+                    navigate={navigate}
+                    registerNavBlocker={registerNavBlocker}
+                    unregisterNavBlocker={unregisterNavBlocker}
+                  />
+                }
+              />
               <Route path="/hissa-booking" element={<Navigate to="/new-booking" replace />} />
               <Route path="/bookings" element={<Bookings data={data} patchData={patchData} notify={notify} navigate={navigate} />} />
               <Route path="/bookings/:id" element={<Bookings data={data} patchData={patchData} notify={notify} navigate={navigate} selectedId={location.split('/')[2]} />} />
@@ -198,6 +274,45 @@ function AppContent() {
         </main>
       </div>
       {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+      {showUnsavedModal && (
+        <Modal
+          title="Unsaved Changes"
+          description="You have unsaved booking details."
+          onClose={handleCancelLeave}
+          closeOnBack={false}
+        >
+          <div className="space-y-4">
+            <div className="rounded-xl border border-[#efb7ae] bg-[#fff3f0] p-4 text-sm text-[#a63f32] dark:border-[#5d2520] dark:bg-[#331614] dark:text-[#fca5a5] flex items-start gap-3">
+              <AlertTriangle size={20} className="shrink-0 mt-0.5" />
+              <div className="text-xs sm:text-sm">
+                <p className="font-bold">Are you sure you want to leave?</p>
+                <p className="mt-1 text-[#a63f32]/90 dark:text-[#fca5a5]/90">
+                  All entered booking information will be lost if you navigate away without confirming.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                data-testid="button-stay-on-page"
+                onClick={handleCancelLeave}
+                className="btn-secondary justify-center text-xs sm:text-sm"
+              >
+                Stay on Page
+              </button>
+              <button
+                type="button"
+                data-testid="button-discard-changes"
+                onClick={handleConfirmDiscard}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-transparent bg-[#dc2626] px-4 py-2.5 text-xs sm:text-sm font-bold text-white transition hover:bg-[#b91c1c] dark:bg-[#ef4444] dark:hover:bg-[#dc2626]"
+              >
+                Discard &amp; Leave
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
