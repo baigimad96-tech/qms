@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, RefreshCw, Trash2, Building2, Users, Pencil } from 'lucide-react';
+import { Download, RefreshCw, Trash2, Building2, Users, Pencil, MapPin } from 'lucide-react';
 import Modal from '../components/Modal.jsx';
 import { formatNumber, formatMoney, formatDateTime } from '../data/mockData.js';
 
@@ -56,6 +56,7 @@ export default function BookingDetails({
     ['Qurbani Day', displayDay],
     ['Collection Centre', centreName],
     [personLabel, booking.qurbaniPersonName || booking.personName],
+    ['Address', booking.address || 'N/A'],
     ['Total Hissa', formatNumber(hissaCount)],
     ['Total Hissa Cost', formatMoney(totalCost)],
     ['Meat Wanted', displayMeat],
@@ -74,14 +75,20 @@ export default function BookingDetails({
       <div className="grid gap-3 sm:grid-cols-2">
         {fields.map(([label, value]) => {
           const isCentre = label === 'Collection Centre';
+          const isAddress = label === 'Address';
           return (
             <div
               key={label}
-              className="soft-inset min-w-0 rounded-xl p-3.5 sm:p-4 flex flex-col justify-between overflow-hidden"
+              className={`soft-inset min-w-0 rounded-xl p-3.5 sm:p-4 flex flex-col justify-between overflow-hidden ${
+                isAddress ? 'sm:col-span-2' : ''
+              }`}
             >
               <div className="flex items-center gap-1.5 text-xs text-[#78847c] dark:text-[#92b1a3]">
                 {isCentre && (
                   <Building2 size={13} className="shrink-0 text-[#246b59] dark:text-[#52c99a]" />
+                )}
+                {isAddress && (
+                  <MapPin size={13} className="shrink-0 text-[#246b59] dark:text-[#52c99a]" />
                 )}
                 <span>{label}</span>
               </div>

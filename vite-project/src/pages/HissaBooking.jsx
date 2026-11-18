@@ -78,6 +78,7 @@ export default function HissaBooking({
     day: '',
     collectionCentreId: '',
     personName: '',
+    address: '',
     hissa: '',
     cost: '',
     meatWanted: 'Yes',
@@ -90,6 +91,7 @@ export default function HissaBooking({
   const [memberErrors, setMemberErrors] = useState({});
   const [collectionCentres, setCollectionCentres] = useState(data.collectionCentres || []);
   const [personNameError, setPersonNameError] = useState('');
+  const [addressError, setAddressError] = useState('');
   const [costError, setCostError] = useState('');
   const [hissaError, setHissaError] = useState('');
   const [success, setSuccess] = useState('');
@@ -108,6 +110,7 @@ export default function HissaBooking({
       day: '',
       collectionCentreId: '',
       personName: '',
+      address: '',
       hissa: '',
       cost: '',
       meatWanted: 'Yes',
@@ -119,6 +122,7 @@ export default function HissaBooking({
     ]);
     setMemberErrors({});
     setPersonNameError('');
+    setAddressError('');
     setCostError('');
     setHissaError('');
     setSuccess('');
@@ -132,6 +136,7 @@ export default function HissaBooking({
       form.day ||
       form.collectionCentreId ||
       form.personName?.trim() ||
+      form.address?.trim() ||
       (bookingMode === 'multi' && (members.length > 1 || members.some((m) => m.memberName?.trim() || m.hissaCount > 1))) ||
       (bookingMode === 'single' && form.hissa && form.hissa !== '0') ||
       form.cost ||
@@ -538,6 +543,18 @@ export default function HissaBooking({
     }
   };
 
+  const handleAddressChange = (e) => {
+    const val = e.target.value;
+    set('address', val);
+    if (!val.trim()) {
+      setAddressError('Address is required');
+    } else if (val.trim().length > 255) {
+      setAddressError('Address cannot exceed 255 characters');
+    } else {
+      setAddressError('');
+    }
+  };
+
   const handleHissaKeyDown = (e) => {
     if (
       e.key === 'Backspace' ||
@@ -908,6 +925,24 @@ export default function HissaBooking({
     }
     setPersonNameError('');
 
+    // 3.1. Residential / physical contact address check (JIH-003)
+    const trimmedAddress = (form.address || '').trim();
+    if (!trimmedAddress) {
+      const err = 'Address is required';
+      setAddressError(err);
+      const el = document.querySelector('[data-testid="input-person-address"]');
+      el?.focus();
+      return notify(err, 'error');
+    }
+    if (trimmedAddress.length > 255) {
+      const err = 'Address cannot exceed 255 characters';
+      setAddressError(err);
+      const el = document.querySelector('[data-testid="input-person-address"]');
+      el?.focus();
+      return notify(err, 'error');
+    }
+    setAddressError('');
+
     // 4. Cost check
     const cost = Number(form.cost);
     const costWholeDigits = String(form.cost || '').split('.')[0].replace(/\D/g, '').length;
@@ -1018,6 +1053,7 @@ export default function HissaBooking({
       collectionCentreId: form.collectionCentreId ? Number(form.collectionCentreId) : null,
       bookedByAdminName: adminName,
       qurbaniPersonName: trimmedPersonName,
+      address: trimmedAddress,
       perHissaCost: cost,
       meatWanted: form.meatWanted === 'Yes' || form.meatWanted === true,
       ...(bookingMode === 'multi'
@@ -1057,6 +1093,7 @@ export default function HissaBooking({
           day: selectedDay?.name || `Day ${rawNewBooking?.qurbaniDayId || selectedDay?.id || 1}`,
           personName: trimmedPersonName || rawNewBooking?.qurbaniPersonName || 'Anonymous',
           qurbaniPersonName: trimmedPersonName || rawNewBooking?.qurbaniPersonName || 'Anonymous',
+          address: trimmedAddress || rawNewBooking?.address || '',
           animal: selected?.animal || selected?.animalType || 'Buffalo',
           animalType: selected?.animalType || 'Buffalo',
           animalId: Number(selected.animalId || selected.id),
@@ -1146,6 +1183,9 @@ export default function HissaBooking({
         }
         if (resData.data.qurbaniPersonName || resData.data.personName) {
           setPersonNameError(resData.data.qurbaniPersonName || resData.data.personName);
+        }
+        if (resData.data.address) {
+          setAddressError(resData.data.address);
         }
       }
       const errMsg = getErrorMessage(error, 'Failed to create booking. Server might be down or token expired.');
@@ -1541,6 +1581,38 @@ export default function HissaBooking({
                   )}
                 </Field>
 
+                {/* JIH-003: Mandatory Address */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-bold uppercase tracking-[.07em] text-[#68776e]">
+                      Address / Residential Location <span className="text-[#dc2626]">*</span>
+                    </span>
+                    <span className={`text-[11px] ${form.address.length > 255 ? 'text-[#dc2626] font-bold' : 'text-[#7b867e] dark:text-[#92b1a3]'}`}>
+                      {form.address.length} / 255
+                    </span>
+                  </div>
+                  <textarea
+                    data-testid="input-person-address"
+                    rows={2}
+                    value={form.address}
+                    onChange={handleAddressChange}
+                    placeholder="e.g. Flat 402, High Street, Near Markaz, Pune - 411001"
+                    maxLength={255}
+                    className={`input min-h-[72px] resize-y py-2.5 ${
+                      addressError || form.address.length > 255 ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''
+                    }`}
+                    required
+                  />
+                  {addressError && (
+                    <p data-testid="error-person-address" className="mt-1.5 text-xs text-[#a63f32] dark:text-[#fca5a5]">
+                      {addressError}
+                    </p>
+                  )}
+                  <p className="mt-1 text-[11px] text-[#7b867e] dark:text-[#8ba79b]">
+                    Printed on official receipt and used for meat collection / delivery verification.
+                  </p>
+                </div>
+
                 <div className="grid gap-5 sm:grid-cols-2">
                   <Field label="Number of Hissa">
                     <input
@@ -1657,6 +1729,38 @@ export default function HissaBooking({
                       </div>
                     )}
                   </Field>
+                </div>
+
+                {/* JIH-003: Mandatory Address */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-bold uppercase tracking-[.07em] text-[#68776e]">
+                      Address / Residential Location <span className="text-[#dc2626]">*</span>
+                    </span>
+                    <span className={`text-[11px] ${form.address.length > 255 ? 'text-[#dc2626] font-bold' : 'text-[#7b867e] dark:text-[#92b1a3]'}`}>
+                      {form.address.length} / 255
+                    </span>
+                  </div>
+                  <textarea
+                    data-testid="input-person-address"
+                    rows={2}
+                    value={form.address}
+                    onChange={handleAddressChange}
+                    placeholder="e.g. Flat 402, High Street, Near Markaz, Pune - 411001"
+                    maxLength={255}
+                    className={`input min-h-[72px] resize-y py-2.5 ${
+                      addressError || form.address.length > 255 ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''
+                    }`}
+                    required
+                  />
+                  {addressError && (
+                    <p data-testid="error-person-address" className="mt-1.5 text-xs text-[#a63f32] dark:text-[#fca5a5]">
+                      {addressError}
+                    </p>
+                  )}
+                  <p className="mt-1 text-[11px] text-[#7b867e] dark:text-[#8ba79b]">
+                    Printed on official receipt and used for meat collection / delivery verification.
+                  </p>
                 </div>
 
                 {/* Dynamic Family Members Component */}
@@ -1878,7 +1982,7 @@ export default function HissaBooking({
                 data-testid="button-submit-booking"
                 className="btn-primary justify-center disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer shadow-md transition"
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || form.address.length > 255}
               >
                 {isSubmitting ? (
                   <>
@@ -1924,6 +2028,14 @@ export default function HissaBooking({
                     : 'Single Person'}
                 </strong>
               </div>
+              {form.address?.trim() && (
+                <div className="flex min-w-0 items-baseline justify-between gap-3">
+                  <span className="shrink-0">Address</span>
+                  <strong className="min-w-0 text-right text-[#f9f4e9] truncate max-w-[160px]" title={form.address.trim()}>
+                    {form.address.trim()}
+                  </strong>
+                </div>
+              )}
               <div className="flex min-w-0 items-baseline justify-between gap-3">
                 <span className="shrink-0">Collection Centre</span>
                 <strong className="min-w-0 text-right text-[#f9f4e9] break-words [overflow-wrap:anywhere]">

@@ -277,6 +277,11 @@ export function generateBrandedReceiptPdf(booking) {
       ? booking.personName.name || booking.personName.fullName || 'Anonymous'
       : 'Anonymous';
 
+  const personAddress =
+    typeof booking.address === 'string' && booking.address.trim()
+      ? booking.address.trim()
+      : 'N/A';
+
   const bookedBy =
     typeof booking.bookedByAdminName === 'string' && booking.bookedByAdminName.trim()
       ? booking.bookedByAdminName.trim()
@@ -357,22 +362,26 @@ export function generateBrandedReceiptPdf(booking) {
   // Row 1: Receipt No & Family Name (if multiple person) / Qurbani Person (if single)
   renderField('Receipt No', receiptNumber, col1X, y);
   renderField(isMulti ? 'Family Name' : 'Qurbani Person', personName, col2X, y);
-  y += 7.5;
+  y += 7;
 
-  // Row 2: Booking Date & Booked By
+  // Row 2: Address
+  renderField('Address', personAddress, col1X, y, contentWidth);
+  y += 7;
+
+  // Row 3: Booking Date & Booked By
   renderField('Booking Date', bookingDate, col1X, y);
   renderField('Booked By', bookedBy, col2X, y);
-  y += 7.5;
+  y += 7;
 
-  // Row 3: Animal Type & Qurbani Day
+  // Row 4: Animal Type & Qurbani Day
   renderField('Animal Type', animalType, col1X, y);
   renderField('Qurbani Day', `Day ${dayStr}`, col2X, y);
-  y += 7.5;
+  y += 7;
 
-  // Row 4: Collection Centre & Meat Wanted
+  // Row 5: Collection Centre & Meat Wanted
   renderField('Collection Centre', collectionCentreName, col1X, y);
   renderField('Meat Wanted', meatWanted, col2X, y);
-  y += 12;
+  y += 11;
 
   // 6. Allocation Table: Detailed Family Breakdown OR Single Summary Row
   const hasMultipleMembers = isMulti && validMembers.length > 0;

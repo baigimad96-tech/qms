@@ -9,7 +9,7 @@ import {
 const ENV = {
   dev: {
     // BASE_URL: ' https://ls6cx6sb-8080.inc1.devtunnels.ms/', // devtunnel
-    BASE_URL: 'https://taylor-unirritant-latina.ngrok-free.dev', // ngrok
+    // BASE_URL: 'https://taylor-unirritant-latina.ngrok-free.dev', // ngrok
     BASE_URL: 'https://long-peninsular-kamryn.ngrok-free.dev', // touseef
   },
   staging: {
@@ -20,7 +20,7 @@ const ENV = {
   },
 };
 
-const getEnvVars = (env = 'prod') => {
+const getEnvVars = (env = 'dev') => {
   if (!ENV[env]) {
     throw new Error(`Unknown environment: ${env}`);
   }

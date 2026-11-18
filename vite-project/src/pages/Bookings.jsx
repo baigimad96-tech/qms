@@ -109,6 +109,7 @@ export function normalizeBooking(b) {
     animalId: animalId,
     personName: b.qurbaniPersonName || b.personName || 'Anonymous',
     qurbaniPersonName: b.qurbaniPersonName || b.personName || 'Anonymous',
+    address: b.address || 'N/A',
     animal: animalName,
     animalType: animalName,
     day: dayName,
@@ -195,6 +196,7 @@ export function BookingEditModal({
 
   const [form, setForm] = useState({
     personName: initialName,
+    address: booking.address || '',
     animalId: String(booking.animalId || ''),
     qurbaniDayId: String(booking.qurbaniDayId || booking.qurbaniDay || ''),
     collectionCentreId: initialCentreId,
@@ -205,6 +207,12 @@ export function BookingEditModal({
 
   // Keep form & members updated if booking object is enriched asynchronously
   useEffect(() => {
+    if (booking.address !== undefined) {
+      setForm((prev) => ({
+        ...prev,
+        address: prev.address || booking.address || '',
+      }));
+    }
     if (Array.isArray(booking.members) && booking.members.length > 0) {
       setMembers(
         booking.members.map((m) => ({
@@ -263,6 +271,7 @@ export function BookingEditModal({
   const [personNameError, setPersonNameError] = useState(() =>
     initialName ? validatePersonName(initialName) : ''
   );
+  const [addressError, setAddressError] = useState('');
   const [costError, setCostError] = useState('');
   const [hissaError, setHissaError] = useState('');
 
@@ -273,6 +282,18 @@ export function BookingEditModal({
     set('personName', val);
     const err = validatePersonName(val);
     setPersonNameError(err);
+  };
+
+  const handleAddressChange = (e) => {
+    const val = e.target.value;
+    set('address', val);
+    if (!val.trim()) {
+      setAddressError('Address is required');
+    } else if (val.trim().length > 255) {
+      setAddressError('Address cannot exceed 255 characters');
+    } else {
+      setAddressError('');
+    }
   };
 
   const handleAnimalChange = (newAnimalId) => {
@@ -610,6 +631,17 @@ export function BookingEditModal({
       return;
     }
 
+    const trimmedAddress = (form.address || '').trim();
+    if (!trimmedAddress) {
+      setAddressError('Address is required');
+      return;
+    }
+    if (trimmedAddress.length > 255) {
+      setAddressError('Address cannot exceed 255 characters');
+      return;
+    }
+    setAddressError('');
+
     if (bookingMode === 'multi') {
       if (members.length < 2) {
         setHissaError('Family booking requires at least 2 members.');
@@ -659,11 +691,13 @@ export function BookingEditModal({
     }
 
     setPersonNameError('');
+    setAddressError('');
     setCostError('');
     setHissaError('');
 
     onSave({
       ...form,
+      address: trimmedAddress,
       bookingMode,
       hissa: String(effectiveTotalHissa),
       members: bookingMode === 'multi'
@@ -757,6 +791,38 @@ export function BookingEditModal({
             </p>
           )}
         </Field>
+
+        {/* JIH-003: Address Field */}
+        <div>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs font-bold uppercase tracking-[.07em] text-[#68776e]">
+              Address / Residential Location <span className="text-[#dc2626]">*</span>
+            </span>
+            <span className={`text-[11px] ${(form.address || '').length > 255 ? 'text-[#dc2626] font-bold' : 'text-[#7b867e] dark:text-[#92b1a3]'}`}>
+              {(form.address || '').length} / 255
+            </span>
+          </div>
+          <textarea
+            data-testid="input-edit-person-address"
+            rows={2}
+            value={form.address || ''}
+            onChange={handleAddressChange}
+            placeholder="e.g. Flat 402, High Street, Near Markaz, Pune - 411001"
+            maxLength={255}
+            className={`input min-h-[72px] resize-y py-2.5 ${
+              addressError || (form.address || '').length > 255 ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''
+            }`}
+            required
+          />
+          {addressError && (
+            <p data-testid="error-edit-person-address" className="mt-1.5 text-xs text-[#a63f32] dark:text-[#fca5a5]">
+              {addressError}
+            </p>
+          )}
+          <p className="mt-1 text-[11px] text-[#7b867e] dark:text-[#8ba79b]">
+            Printed on official receipt and used for meat collection / delivery verification.
+          </p>
+        </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Animal Inventory Batch">
@@ -1077,9 +1143,12 @@ export function BookingEditModal({
           disabled={
             isSaving ||
             Boolean(personNameError) ||
+            Boolean(addressError) ||
             Boolean(costError) ||
             Boolean(hissaError) ||
             !form.personName?.trim() ||
+            !(form.address || '').trim() ||
+            (form.address || '').length > 255 ||
             !isCostValid ||
             !isHissaValid
           }
@@ -1146,6 +1215,11 @@ export function BookingDeleteModal({
           <p className="mt-0.5 font-bold text-[#183f35] dark:text-[#edf6f2]">
             {participantName}
           </p>
+          {booking.address && booking.address !== 'N/A' && (
+            <p className="mt-1 text-[11px] text-[#78847c] dark:text-[#8ba79b] truncate" title={booking.address}>
+              📍 {booking.address}
+            </p>
+          )}
         </div>
         <div className="soft-inset rounded-xl p-3.5">
           <p className="text-xs text-[#78847c] dark:text-[#92b1a3]">Receipt No</p>
@@ -1417,6 +1491,7 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
         !q ||
         matchesReceipt(b, cleanQ) ||
         b.personName.toLowerCase().includes(q) ||
+        (b.address && String(b.address).toLowerCase().includes(q)) ||
         (b.animal && String(b.animal).toLowerCase().includes(q)) ||
         (b.animalType && String(b.animalType).toLowerCase().includes(q)) ||
         (b.bookedBy && b.bookedBy.toLowerCase().includes(q)) ||
@@ -1574,12 +1649,15 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
     const targetId =
       editingBooking.hissaBookingId || editingBooking.bookingId || editingBooking.id;
 
+    const trimmedAddress = (form.address || '').trim();
+
     const payload = {
       animalId: Number(form.animalId || editingBooking.animalId),
       qurbaniDayId: Number(form.qurbaniDayId || editingBooking.qurbaniDayId),
       collectionCentreId: form.collectionCentreId ? Number(form.collectionCentreId) : null,
       bookedByAdminName: adminName,
       qurbaniPersonName: trimmedName,
+      address: trimmedAddress,
       totalHissa: effectiveHissa,
       perHissaCost: cost,
       meatWanted: form.meatWanted === 'Yes' || form.meatWanted === true,
@@ -1627,6 +1705,7 @@ export default function Bookings({ data, patchData, notify, navigate, selectedId
           personName: updated.qurbaniPersonName || updated.personName || trimmedName,
           qurbaniPersonName:
             updated.qurbaniPersonName || updated.personName || trimmedName,
+          address: updated.address || trimmedAddress || editingBooking.address || 'N/A',
           animal: (
             typeof updated.animal === 'object' && updated.animal !== null
               ? updated.animal.animalType || updated.animal.animal_type || updated.animal.name || updated.animal.type || 'Animal'

@@ -242,6 +242,7 @@ const AUDIT_FIELD_METADATA = {
   // Booking fields
   qurbaniPersonName: { label: 'Participant Name' },
   personName: { label: 'Participant Name' },
+  address: { label: 'Address / Residential Location' },
   animalId: { label: 'Animal Batch ID' },
   animalType: { label: 'Animal Type' },
   totalHissa: { label: 'Total Hissa Count' },

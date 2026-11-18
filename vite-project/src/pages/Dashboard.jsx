@@ -134,6 +134,7 @@ export function BookingsTable({
           <tr>
             <Th>Receipt No</Th>
             <Th>Qurbani Person</Th>
+            <Th>Address</Th>
             <Th>Animal</Th>
             <Th>Qurbani Day</Th>
             <Th>Total Hissa</Th>
@@ -205,6 +206,14 @@ export function BookingsTable({
                       </span>
                     )}
                   </div>
+                </Td>
+                <Td className="max-w-[200px]">
+                  <span
+                    className="block max-w-[200px] truncate text-xs text-[#526359] dark:text-[#92b1a3]"
+                    title={b.address || 'N/A'}
+                  >
+                    {b.address || '—'}
+                  </span>
                 </Td>
                 <Td className="dark:text-[#d3e3db]">{animalName}</Td>
                 <Td>
@@ -409,6 +418,7 @@ export default function Dashboard({ data, navigate, notify }) {
               bookingId: b.hissaBookingId || b.id,
               hissaBookingId: b.hissaBookingId || b.id,
               personName: b.qurbaniPersonName || b.personName || 'Anonymous',
+              address: b.address || 'N/A',
               animal: (
                 typeof b.animal === 'object' && b.animal !== null
                   ? b.animal.animalType || b.animal.animal_type || b.animal.name || b.animal.type || 'Buffalo'
@@ -480,8 +490,9 @@ export default function Dashboard({ data, navigate, notify }) {
               receiptNumber: finalReceipt,
               bookingId: bookingId,
               hissaBookingId: bookingId,
-            personName: b.qurbaniPersonName || b.personName || 'Anonymous',
-            animal: (
+              personName: b.qurbaniPersonName || b.personName || 'Anonymous',
+              address: b.address || 'N/A',
+              animal: (
               typeof b.animal === 'object' && b.animal !== null
                 ? b.animal.animalType || b.animal.animal_type || b.animal.name || b.animal.type || 'Buffalo'
                 : typeof b.animalType === 'object' && b.animalType !== null
