@@ -1,0 +1,48 @@
+**Pages (src/pages):**
+
+1. AdminManagement (AdminManagement.jsx)
+A page for managing the workspace's administrators. It shows a list of all current admins and allows you to view their details, edit their information, or add new administrators.
+
+2. AnimalInventory (AnimalInventory.jsx)
+A page to track all the Buffalo batches. It calculates and shows total animals, total Hissa, booked Hissa, available Hissa, and costs. Admins can add new batches or edit existing ones here.
+
+3. AuditLogs (AuditLogs.jsx)
+A security and tracking page that displays a history of all operational changes. It shows exactly who did what action, on what item, and when it happened.
+
+4. BookingDetails (BookingDetails.jsx)
+A dedicated popup page (modal) that shows the full, read-only details of a single confirmed booking.
+
+5. Bookings (Bookings.jsx)
+A directory page listing all confirmed Qurbani (Hissa) bookings. You can search by person name, filter by specific Qurbani days, or check if they requested meat.
+
+6. Dashboard (Dashboard.jsx)
+The main home screen. It gives a high-level overview of the operation using key statistics (like Total Animals, Available Hissa), shows a quick look at Qurbani day capacities, and lists the most recent bookings.
+
+7. HissaBooking (HissaBooking.jsx)
+The form used to create a new booking. It lets you select an animal batch, pick a day, enter person details, and smartly checks if there is enough capacity before confirming the booking.
+
+8. Login (Login.jsx)
+The secure entry screen where administrators enter their email and password to access the workspace.
+
+9. QurbaniDays (QurbaniDays.jsx)
+A planning page for the three fixed days of Qurbani. It provides a visual overview of how many Hissa are booked versus remaining for each day, and allows admins to adjust the maximum capacity.
+
+**Components (src/components):**
+
+1. Badge (Badge.jsx)
+A small, color-coded visual indicator (like a pill shape) used to quickly show a status, such as "Available", "Almost Full", or "Full".
+
+2. Header (Header.jsx)
+The top navigation bar of the application. It displays the name of the page you are currently viewing and shows the logged-in administrator's name.
+
+3. Modal (Modal.jsx)
+A reusable popup window. It is used across the app to let users fill out forms (like editing a batch) or view details without having to navigate away from their current page.
+
+4. Sidebar (Sidebar.jsx)
+The main navigation menu, typically found on the left side of the screen. It contains links to jump between the Dashboard, Inventory, Bookings, and other sections of the app.
+
+5. StatCard (StatCard.jsx)
+A reusable visual card used on the Dashboard to highlight a single important metric (like "Total Bookings" or "Available Hissa") along with a relevant icon.
+
+6. Table (Table.jsx)
+A collection of reusable building blocks (like headers, rows, action buttons, and "no data found" messages) used to cleanly display lists of data across various pages.
