@@ -134,7 +134,6 @@ export function BookingsTable({
           <tr>
             <Th>Receipt No</Th>
             <Th>Qurbani Person</Th>
-            <Th>Address</Th>
             <Th>Animal</Th>
             <Th>Qurbani Day</Th>
             <Th>Total Hissa</Th>
@@ -206,14 +205,6 @@ export function BookingsTable({
                       </span>
                     )}
                   </div>
-                </Td>
-                <Td className="max-w-[200px]">
-                  <span
-                    className="block max-w-[200px] truncate text-xs text-[#526359] dark:text-[#92b1a3]"
-                    title={b.address || 'N/A'}
-                  >
-                    {b.address || '—'}
-                  </span>
                 </Td>
                 <Td className="dark:text-[#d3e3db]">{animalName}</Td>
                 <Td>
