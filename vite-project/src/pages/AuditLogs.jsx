@@ -9,6 +9,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Layers,
   Users,
   Database,
@@ -25,6 +26,7 @@ import Modal, { ModalActions } from '../components/Modal.jsx';
 import { formatDateTime, formatMoney, formatNumber } from '../data/mockData.js';
 import { getAuditLogs, getAuditLogById, AUDIT_ENTITY_TYPES } from '../services/auditApi.js';
 import { api } from '../services/api.js';
+import AuditMemberDiffViewer from '../components/AuditMemberDiffViewer.jsx';
 
 // Action badge styling helper - WCAG 2.1 AA/AAA compliant high contrast colors
 export function getActionBadgeStyle(action) {
@@ -254,6 +256,8 @@ const AUDIT_FIELD_METADATA = {
   bookedByAdminName: { label: 'Booked By Admin' },
   bookedBy: { label: 'Booked By Admin' },
   receiptNumber: { label: 'Receipt Number' },
+  familyMembersSummary: { label: 'Family Members Summary' },
+  members: { label: 'Family Members Breakdown' },
 
   // Animal fields
   batchYear: { label: 'Batch Year' },
@@ -307,6 +311,14 @@ function formatAuditValue(key, value) {
     return value ? 'Yes' : 'No';
   }
 
+  // JIH-004: Format members array as human-readable string
+  if (key === 'members' && Array.isArray(value)) {
+    if (value.length === 0) return 'None (0 Members)';
+    return value
+      .map((m) => `${m.memberName || 'Member'} (${m.hissaCount || 1} ${Number(m.hissaCount) === 1 ? 'Hissa' : 'Hissas'})`)
+      .join(', ');
+  }
+
   if (typeof value === 'object') {
     return JSON.stringify(value);
   }
@@ -338,7 +350,9 @@ function RenderKeyValueGrid({ data, emptyMessage = 'No details recorded.' }) {
       {entries.map(([key, val]) => (
         <div
           key={key}
-          className="rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3 dark:border-[#21473a] dark:bg-[#122820]"
+          className={`rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3 dark:border-[#21473a] dark:bg-[#122820] ${
+            key === 'members' || key === 'familyMembersSummary' ? 'sm:col-span-2' : ''
+          }`}
         >
           <p className="text-[11px] font-semibold text-[#7b867e] dark:text-[#8ba79b]">
             {formatAuditKey(key)}
@@ -369,14 +383,51 @@ function AuditDetailModal({ audit, onClose }) {
   const isCreate = action.includes('CREATE') || (!oldPayload && Boolean(newPayload));
   const isDelete = action.includes('DELETE') || (Boolean(oldPayload) && !newPayload);
 
-  // Compute modified fields if this is an update event
+  // Check if family members array or summary exists in payload
+  const hasMembersData = Boolean(
+    (oldPayload?.members && Array.isArray(oldPayload.members) && oldPayload.members.length > 0) ||
+    (newPayload?.members && Array.isArray(newPayload.members) && newPayload.members.length > 0) ||
+    oldPayload?.familyMembersSummary ||
+    newPayload?.familyMembersSummary
+  );
+
+  // Compute modified fields if this is an update event (exclude members if handled by diff viewer)
   const changedKeys = useMemo(() => {
     if (!isUpdate || !oldPayload || !newPayload || typeof oldPayload !== 'object' || typeof newPayload !== 'object') {
       return [];
     }
     const all = Array.from(new Set([...Object.keys(oldPayload), ...Object.keys(newPayload)]));
-    return all.filter((k) => JSON.stringify(oldPayload[k]) !== JSON.stringify(newPayload[k]));
-  }, [isUpdate, oldPayload, newPayload]);
+    return all.filter((k) => {
+      if (hasMembersData && (k === 'members' || k === 'familyMembersSummary')) {
+        return false;
+      }
+      return JSON.stringify(oldPayload[k]) !== JSON.stringify(newPayload[k]);
+    });
+  }, [isUpdate, oldPayload, newPayload, hasMembersData]);
+
+  // Clean snapshot payloads so members/familyMembersSummary don't duplicate inside raw grids
+  const cleanedOldPayload = useMemo(() => {
+    if (!oldPayload || typeof oldPayload !== 'object') return oldPayload;
+    if (!hasMembersData) return oldPayload;
+    const copy = { ...oldPayload };
+    delete copy.members;
+    delete copy.familyMembersSummary;
+    return copy;
+  }, [oldPayload, hasMembersData]);
+
+  const cleanedNewPayload = useMemo(() => {
+    if (!newPayload || typeof newPayload !== 'object') return newPayload;
+    if (!hasMembersData) return newPayload;
+    const copy = { ...newPayload };
+    delete copy.members;
+    delete copy.familyMembersSummary;
+    return copy;
+  }, [newPayload, hasMembersData]);
+
+  // Collapsible state for complete snapshot
+  const [showFullSnapshot, setShowFullSnapshot] = useState(
+    !hasMembersData && changedKeys.length === 0
+  );
 
   const rawEntityId = getEntityIdentifier(audit, oldPayload, newPayload);
   const displayEntityId = formatEntityDisplayId(rawEntityId);
@@ -386,6 +437,7 @@ function AuditDetailModal({ audit, onClose }) {
       title={`Audit Event ${id}`}
       description="Complete event details, administrator attribution, and entity state records."
       onClose={onClose}
+      maxWidth="max-w-3xl"
     >
       <div className="space-y-4">
         {/* Top Summary & Attribution Card */}
@@ -456,14 +508,14 @@ function AuditDetailModal({ audit, onClose }) {
                 {id}
               </p>
               <p className="mt-0.5 text-[10px] text-[#8a948e] dark:text-[#698d80]">
-                Immutable Security Trail
+                Security Log Record
               </p>
             </div>
           </div>
         </div>
 
         {/* DETAILS SECTION */}
-        {/* CASE 1: UPDATE EVENT -> Show Changed Fields Diff + Old & New Values */}
+        {/* CASE 1: UPDATE EVENT -> Show Changed Fields Diff + Member Diff Viewer + Collapsible Snapshot */}
         {isUpdate && (
           <div className="space-y-3">
             {changedKeys.length > 0 && (
@@ -496,66 +548,121 @@ function AuditDetailModal({ audit, onClose }) {
               </div>
             )}
 
-            {/* Side-by-Side or Stacked Old vs New */}
-            <div className="space-y-3">
-              {/* Previous Value */}
-              <div className="rounded-xl border border-amber-200/80 bg-amber-50/30 p-3.5 dark:border-amber-900/40 dark:bg-amber-950/10">
-                <div className="mb-2.5 flex items-center justify-between border-b border-amber-200/60 pb-2 dark:border-amber-900/30">
-                  <span className="text-xs font-bold text-amber-800 dark:text-amber-300">
-                    Previous Value (Before Modification)
-                  </span>
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
-                    Old State
-                  </span>
-                </div>
-                <RenderKeyValueGrid data={oldPayload} emptyMessage="No prior data recorded." />
-              </div>
+            {/* Family Member Diff Viewer right after modified fields */}
+            {hasMembersData && (
+              <AuditMemberDiffViewer
+                log={audit}
+                oldPayload={oldPayload}
+                newPayload={newPayload}
+              />
+            )}
 
-              {/* Updated Value */}
-              <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/30 p-3.5 dark:border-emerald-900/40 dark:bg-emerald-950/10">
-                <div className="mb-2.5 flex items-center justify-between border-b border-emerald-200/60 pb-2 dark:border-emerald-900/30">
-                  <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                    Updated Value (After Modification)
+            {/* Collapsible Complete Snapshot (Old vs New) */}
+            <div className="overflow-hidden rounded-xl border border-[#ded8ca] bg-[#faf6ed]/60 dark:border-[#21473a] dark:bg-[#122820]/60">
+              <button
+                type="button"
+                onClick={() => setShowFullSnapshot((prev) => !prev)}
+                className="flex w-full items-center justify-between p-3.5 text-left transition hover:bg-[#faf6ed] dark:hover:bg-[#122820]"
+              >
+                <div className="flex items-center gap-2">
+                  <Layers size={14} className="text-[#246b59] dark:text-[#4ade80]" />
+                  <span className="text-xs font-bold text-[#183f35] dark:text-[#edf6f2]">
+                    Full Record Snapshot
                   </span>
-                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
-                    New State
+                  <span className="rounded-full bg-[#eee8dc] px-2 py-0.5 text-[10px] font-semibold text-[#667269] dark:bg-[#1e4636] dark:text-[#8ba79b]">
+                    {showFullSnapshot ? 'Hide' : 'View all fields'}
                   </span>
                 </div>
-                <RenderKeyValueGrid data={newPayload} emptyMessage="No updated state recorded." />
-              </div>
+                <ChevronDown
+                  size={16}
+                  className={`text-[#7b867e] transition-transform duration-200 dark:text-[#8ba79b] ${
+                    showFullSnapshot ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {showFullSnapshot && (
+                <div className="space-y-3 border-t border-[#eee8dc] p-3.5 pt-3 dark:border-[#1a3d31]">
+                  {/* Previous Value */}
+                  <div className="rounded-xl border border-amber-200/80 bg-amber-50/30 p-3.5 dark:border-amber-900/40 dark:bg-amber-950/10">
+                    <div className="mb-2.5 flex items-center justify-between border-b border-amber-200/60 pb-2 dark:border-amber-900/30">
+                      <span className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                        Previous Value (Before Modification)
+                      </span>
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                        Old State
+                      </span>
+                    </div>
+                    <RenderKeyValueGrid data={cleanedOldPayload} emptyMessage="No prior data recorded." />
+                  </div>
+
+                  {/* Updated Value */}
+                  <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/30 p-3.5 dark:border-emerald-900/40 dark:bg-emerald-950/10">
+                    <div className="mb-2.5 flex items-center justify-between border-b border-emerald-200/60 pb-2 dark:border-emerald-900/30">
+                      <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                        Updated Value (After Modification)
+                      </span>
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                        New State
+                      </span>
+                    </div>
+                    <RenderKeyValueGrid data={cleanedNewPayload} emptyMessage="No updated state recorded." />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {/* CASE 2: CREATE EVENT -> Show Created Record Details (New Value) */}
         {!isUpdate && isCreate && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
-            <div className="mb-3 flex items-center justify-between border-b border-emerald-200/60 pb-2.5 dark:border-emerald-900/40">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                <CheckCircle2 size={15} />
-                <span>Created Record Details (New Value)</span>
+          <div className="space-y-3">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+              <div className="mb-3 flex items-center justify-between border-b border-emerald-200/60 pb-2.5 dark:border-emerald-900/40">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                  <CheckCircle2 size={15} />
+                  <span>Created Record Details (New Value)</span>
+                </div>
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-400">
+                  Newly Recorded
+                </span>
               </div>
-              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-400">
-                Newly Recorded
-              </span>
+              <RenderKeyValueGrid data={cleanedNewPayload || newPayload} emptyMessage="No creation payload recorded." />
             </div>
-            <RenderKeyValueGrid data={newPayload} emptyMessage="No creation payload recorded." />
+
+            {hasMembersData && (
+              <AuditMemberDiffViewer
+                log={audit}
+                oldPayload={oldPayload}
+                newPayload={newPayload}
+              />
+            )}
           </div>
         )}
 
         {/* CASE 3: DELETE EVENT -> Show Deleted Record Details (Snapshot from Old Value) */}
         {!isUpdate && isDelete && (
-          <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-4 dark:border-rose-900/50 dark:bg-rose-950/20">
-            <div className="mb-3 flex items-center justify-between border-b border-rose-200/60 pb-2.5 dark:border-rose-900/40">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-rose-800 dark:text-rose-300">
-                <X size={15} />
-                <span>Deleted Record Details (Snapshot)</span>
+          <div className="space-y-3">
+            <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-4 dark:border-rose-900/50 dark:bg-rose-950/20">
+              <div className="mb-3 flex items-center justify-between border-b border-rose-200/60 pb-2.5 dark:border-rose-900/40">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-rose-800 dark:text-rose-300">
+                  <X size={15} />
+                  <span>Deleted Record Details (Snapshot)</span>
+                </div>
+                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:bg-rose-900/60 dark:text-rose-400">
+                  Removed from System
+                </span>
               </div>
-              <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:bg-rose-900/60 dark:text-rose-400">
-                Removed from System
-              </span>
+              <RenderKeyValueGrid data={cleanedOldPayload || oldPayload || newPayload} emptyMessage="No deletion snapshot available." />
             </div>
-            <RenderKeyValueGrid data={oldPayload || newPayload} emptyMessage="No deletion snapshot available." />
+
+            {hasMembersData && (
+              <AuditMemberDiffViewer
+                log={audit}
+                oldPayload={oldPayload}
+                newPayload={newPayload}
+              />
+            )}
           </div>
         )}
 
@@ -565,14 +672,21 @@ function AuditDetailModal({ audit, onClose }) {
             {oldPayload && (
               <div className="rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3.5 dark:border-[#21473a] dark:bg-[#122820]">
                 <p className="mb-2 text-xs font-bold text-[#183f35] dark:text-[#edf6f2]">Previous Value</p>
-                <RenderKeyValueGrid data={oldPayload} />
+                <RenderKeyValueGrid data={cleanedOldPayload || oldPayload} />
               </div>
             )}
             {newPayload && (
               <div className="rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3.5 dark:border-[#21473a] dark:bg-[#122820]">
                 <p className="mb-2 text-xs font-bold text-[#183f35] dark:text-[#edf6f2]">Current Value</p>
-                <RenderKeyValueGrid data={newPayload} />
+                <RenderKeyValueGrid data={cleanedNewPayload || newPayload} />
               </div>
+            )}
+            {hasMembersData && (
+              <AuditMemberDiffViewer
+                log={audit}
+                oldPayload={oldPayload}
+                newPayload={newPayload}
+              />
             )}
           </div>
         )}
@@ -780,6 +894,13 @@ export default function AuditLogs({ data }) {
       const formattedEntity = getEntityLabel(item.entityType).toLowerCase();
       const entityId = String(item.entityId || '').toLowerCase();
       const resolvedEntityId = String(getEntityIdentifier(item) || '').toLowerCase();
+      const oldP = parseAuditPayload(item.oldValue);
+      const newP = parseAuditPayload(item.newValue);
+      const summary = String(newP?.familyMembersSummary || oldP?.familyMembersSummary || '').toLowerCase();
+      const person = String(newP?.qurbaniPersonName || oldP?.qurbaniPersonName || newP?.personName || oldP?.personName || '').toLowerCase();
+      const oldMembersStr = Array.isArray(oldP?.members) ? oldP.members.map((m) => m.memberName).join(' ').toLowerCase() : '';
+      const newMembersStr = Array.isArray(newP?.members) ? newP.members.map((m) => m.memberName).join(' ').toLowerCase() : '';
+
       return (
         id.includes(q) ||
         admin.includes(q) ||
@@ -788,7 +909,11 @@ export default function AuditLogs({ data }) {
         rawEntity.includes(q) ||
         formattedEntity.includes(q) ||
         entityId.includes(q) ||
-        resolvedEntityId.includes(q)
+        resolvedEntityId.includes(q) ||
+        summary.includes(q) ||
+        person.includes(q) ||
+        oldMembersStr.includes(q) ||
+        newMembersStr.includes(q)
       );
     });
   }, [auditLogs, searchQuery]);
@@ -1030,6 +1155,7 @@ export default function AuditLogs({ data }) {
                 <Th>Admin</Th>
                 <Th>Action</Th>
                 <Th>Entity Type</Th>
+                <Th>Summary</Th>
                 <Th>Date / Time</Th>
                 <Th className="text-right">Details</Th>
               </tr>
@@ -1081,6 +1207,53 @@ export default function AuditLogs({ data }) {
                       >
                         {getEntityLabel(audit.entityType)}
                       </span>
+                    </Td>
+
+                    {/* Summary (JIH-004: Quick Summary) */}
+                    <Td className="max-w-[280px]">
+                      {(() => {
+                        const newP = parseAuditPayload(audit.newValue);
+                        const oldP = parseAuditPayload(audit.oldValue);
+                        const isBooking =
+                          String(audit.entityType || '').toUpperCase() === 'HISSA_BOOKING' ||
+                          String(audit.action || '').toUpperCase().includes('BOOKING');
+
+                        if (isBooking) {
+                          const summary = newP?.familyMembersSummary ?? oldP?.familyMembersSummary;
+                          const personName =
+                            newP?.qurbaniPersonName ??
+                            oldP?.qurbaniPersonName ??
+                            newP?.personName ??
+                            oldP?.personName;
+
+                          return (
+                            <div className="min-w-0">
+                              {personName && (
+                                <span className="font-semibold text-xs text-[#183f35] dark:text-[#edf6f2] block truncate" title={personName}>
+                                  {personName}
+                                </span>
+                              )}
+                              {summary && summary !== 'None' ? (
+                                <p className="text-[11px] text-[#7b867e] dark:text-[#8ba79b] truncate font-medium" title={summary}>
+                                  {summary}
+                                </p>
+                              ) : (
+                                !personName && <span className="text-xs text-[#8a948e] dark:text-[#5d7367]">—</span>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        // For non-booking entities:
+                        const identifier = getEntityIdentifier(audit, oldP, newP);
+                        return identifier ? (
+                          <span className="font-mono text-xs text-[#183f35] dark:text-[#edf6f2] block truncate" title={identifier}>
+                            {formatEntityDisplayId(identifier)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-[#8a948e] dark:text-[#5d7367]">—</span>
+                        );
+                      })()}
                     </Td>
 
                     {/* Date / Time */}

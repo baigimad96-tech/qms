@@ -61,21 +61,7 @@ const validateCentreForm = (form) => {
     errors.location = 'Location contains invalid characters.';
   }
 
-  // 3. Contact Person
-  const contactPerson = (form.contactPerson || '').trim();
-  if (!contactPerson) {
-    errors.contactPerson = 'Contact person name is required.';
-  } else if (contactPerson.length < 2) {
-    errors.contactPerson = 'Contact person name must be at least 2 characters.';
-  } else if (contactPerson.length > 60) {
-    errors.contactPerson = 'Contact person name cannot exceed 60 characters.';
-  } else if (!/^[a-zA-Z]/.test(contactPerson)) {
-    errors.contactPerson = 'Contact person name must start with a letter.';
-  } else if (!/^[a-zA-Z][a-zA-Z\s.'-]*$/.test(contactPerson)) {
-    errors.contactPerson = 'Contact person name must only contain letters, spaces, and dots/hyphens.';
-  }
-
-  // 4. Contact Number
+  // 3. Contact Number
   const rawPhone = (form.contactNumber || '').trim();
   const cleanPhone = sanitizeIndianPhone(rawPhone);
   if (!rawPhone) {
@@ -290,52 +276,32 @@ export function CollectionCentreModal({ centre, onClose, onSave, isSaving, apiEr
           )}
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Contact Person *">
+        <Field label="Contact Number *">
+          <div className="flex">
+            <span className="inline-flex items-center rounded-l-xl border border-r-0 border-[#d8d0c0] bg-[#f0ebd9] px-3.5 text-xs font-bold text-[#183f35] select-none dark:border-[#22483d] dark:bg-[#152e25] dark:text-[#edf6f2] sm:text-sm">
+              +91
+            </span>
             <input
-              type="text"
-              data-testid="input-centre-contact-person"
-              value={form.contactPerson}
-              onChange={(e) => set('contactPerson', e.target.value)}
-              placeholder="Enter contact person name"
-              className={`input ${errors.contactPerson ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
+              type="tel"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={10}
+              data-testid="input-centre-contact-number"
+              value={form.contactNumber}
+              onKeyDown={handlePhoneKeyDown}
+              onChange={handlePhoneChange}
+              placeholder="Enter contact number"
+              className={`input !rounded-l-none ${errors.contactNumber ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
               required
             />
-            {errors.contactPerson && (
-              <p data-testid="error-centre-contact-person" className="mt-1 text-xs text-[#dc2626] flex items-center gap-1 font-medium">
-                <AlertTriangle size={12} className="shrink-0" />
-                <span>{errors.contactPerson}</span>
-              </p>
-            )}
-          </Field>
-
-          <Field label="Contact Number *">
-            <div className="flex">
-              <span className="inline-flex items-center rounded-l-xl border border-r-0 border-[#d8d0c0] bg-[#f0ebd9] px-3.5 text-xs font-bold text-[#183f35] select-none dark:border-[#22483d] dark:bg-[#152e25] dark:text-[#edf6f2] sm:text-sm">
-                +91
-              </span>
-              <input
-                type="tel"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={10}
-                data-testid="input-centre-contact-number"
-                value={form.contactNumber}
-                onKeyDown={handlePhoneKeyDown}
-                onChange={handlePhoneChange}
-                placeholder="Enter contact number"
-                className={`input !rounded-l-none ${errors.contactNumber ? '!border-[#dc2626] !ring-[#dc2626]/20' : ''}`}
-                required
-              />
-            </div>
-            {errors.contactNumber && (
-              <p data-testid="error-centre-contact-number" className="mt-1 text-xs text-[#dc2626] flex items-center gap-1 font-medium">
-                <AlertTriangle size={12} className="shrink-0" />
-                <span>{errors.contactNumber}</span>
-              </p>
-            )}
-          </Field>
-        </div>
+          </div>
+          {errors.contactNumber && (
+            <p data-testid="error-centre-contact-number" className="mt-1 text-xs text-[#dc2626] flex items-center gap-1 font-medium">
+              <AlertTriangle size={12} className="shrink-0" />
+              <span>{errors.contactNumber}</span>
+            </p>
+          )}
+        </Field>
 
         <Field label="Operational Status">
           <label className="flex items-center gap-3 cursor-pointer select-none rounded-xl border border-[#ded8ca] bg-[#faf6ed] p-3 text-sm transition hover:bg-white dark:border-[#21473a] dark:bg-[#122820] dark:hover:bg-[#163328]">
@@ -691,7 +657,7 @@ export default function CollectionCentres({ data, patchData, notify }) {
               <input
                 type="text"
                 data-testid="input-search-centres"
-                placeholder="Search centres by name, location, contact person, or phone..."
+                placeholder="Search centres by name, location, or phone..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-10 w-full rounded-xl border border-[#ded8ca] bg-[#faf6ed] pl-10 pr-8 text-xs font-medium !text-[#183f35] placeholder:text-[#8a948e] transition focus:border-[#246b59] focus:bg-white focus:outline-none dark:border-[#21473a] dark:bg-[#122820] dark:text-[#edf6f2] dark:placeholder:text-[#698d80] dark:focus:border-[#4ade80]"
@@ -748,7 +714,6 @@ export default function CollectionCentres({ data, patchData, notify }) {
               <tr>
                 <Th>Centre Name</Th>
                 <Th>Location</Th>
-                <Th>Contact Person</Th>
                 <Th>Contact Number</Th>
                 <Th>Status</Th>
                 <Th>Actions</Th>
@@ -757,7 +722,7 @@ export default function CollectionCentres({ data, patchData, notify }) {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-sm text-[#78847c] dark:text-[#92b1a3]">
+                  <td colSpan={5} className="py-10 text-center text-sm text-[#78847c] dark:text-[#92b1a3]">
                     <div className="flex items-center justify-center gap-2">
                       <RefreshCw size={16} className="animate-spin text-[#246b59] dark:text-[#4ade80]" />
                       <span>Loading collection centres...</span>
@@ -766,7 +731,7 @@ export default function CollectionCentres({ data, patchData, notify }) {
                 </tr>
               ) : filteredCentres.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-sm text-[#78847c] dark:text-[#92b1a3]">
+                  <td colSpan={5} className="py-10 text-center text-sm text-[#78847c] dark:text-[#92b1a3]">
                     <div className="space-y-2">
                       <p className="font-semibold text-[#315246] dark:text-[#e0eee6]">
                         {searchQuery || statusFilter !== 'All'
@@ -812,16 +777,6 @@ export default function CollectionCentres({ data, patchData, notify }) {
                           <div className="flex items-center gap-1.5 text-xs text-[#315246] dark:text-[#d3e3db]">
                             <MapPin size={13} className="text-[#8a948e] shrink-0" />
                             <span>{getCentreLocation(centre)}</span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-[#9aa49e] dark:text-[#5d7367]">—</span>
-                        )}
-                      </Td>
-                      <Td>
-                        {getCentreContactPerson(centre) ? (
-                          <div className="flex items-center gap-1.5 text-xs text-[#315246] dark:text-[#d3e3db]">
-                            <User size={13} className="text-[#8a948e] shrink-0" />
-                            <span>{getCentreContactPerson(centre)}</span>
                           </div>
                         ) : (
                           <span className="text-xs text-[#9aa49e] dark:text-[#5d7367]">—</span>

@@ -18,6 +18,7 @@ import {
   User,
   Plus,
   Minus,
+  Info,
 } from 'lucide-react';
 import { PageIntro, BookingsTable } from './Dashboard.jsx';
 import Modal, { ModalActions, Field } from '../components/Modal.jsx';
@@ -193,6 +194,7 @@ export function BookingEditModal({
   const [bookingMode, setBookingMode] = useState(() => (rawMembers.length > 1 ? 'multi' : 'single'));
   const [members, setMembers] = useState(() => initialMembers);
   const [memberErrors, setMemberErrors] = useState({});
+  const [memberToDelete, setMemberToDelete] = useState(null);
 
   const [form, setForm] = useState({
     personName: initialName,
@@ -334,8 +336,14 @@ export function BookingEditModal({
   };
 
   const handleRemoveMember = (index) => {
-    if (members.length <= 2) return;
-    setMembers((prev) => prev.filter((_, i) => i !== index));
+    setMemberToDelete(index);
+  };
+
+  const confirmRemoveMember = () => {
+    if (memberToDelete === null || memberToDelete === undefined) return;
+    const index = memberToDelete;
+    const remaining = members.filter((_, i) => i !== index);
+
     setMemberErrors((prev) => {
       const next = {};
       Object.keys(prev).forEach((k) => {
@@ -345,6 +353,31 @@ export function BookingEditModal({
       });
       return next;
     });
+
+    if (remaining.length === 1) {
+      // Auto Single Person Booking: shift automatically when 1 member remains
+      setBookingMode('single');
+      const singleMember = remaining[0];
+      const singleName = (singleMember?.memberName || '').trim() || form.personName;
+      const singleHissa = String(singleMember?.hissaCount || 1);
+      setForm((prev) => ({
+        ...prev,
+        personName: singleName,
+        hissa: singleHissa,
+      }));
+      setMembers(remaining);
+      const nameErr = validatePersonName(singleName);
+      setPersonNameError(nameErr);
+      setHissaError('');
+    } else if (remaining.length === 0) {
+      setBookingMode('single');
+      setMembers([]);
+      setHissaError('');
+    } else {
+      setMembers(remaining);
+    }
+
+    setMemberToDelete(null);
   };
 
   const effectiveTotalHissa = useMemo(() => {
@@ -1084,10 +1117,11 @@ export function BookingEditModal({
 
                       <button
                         type="button"
+                        data-testid={`button-edit-remove-member-${index}`}
                         onClick={() => handleRemoveMember(index)}
-                        disabled={members.length <= 2}
-                        title={members.length <= 2 ? 'Family booking requires a minimum of 2 members' : `Remove member ${index + 1}`}
-                        className="p-1 rounded-lg text-[#a63f32] hover:bg-[#fff0ed] hover:text-[#dc2626] disabled:opacity-20 disabled:cursor-not-allowed dark:text-[#fca5a5] dark:hover:bg-[#331614] transition"
+                        title={`Remove ${member.memberName ? member.memberName : `member ${index + 1}`}`}
+                        aria-label={`Remove member ${index + 1}`}
+                        className="p-1 rounded-lg text-[#a63f32] hover:bg-[#fff0ed] hover:text-[#dc2626] dark:text-[#fca5a5] dark:hover:bg-[#331614] transition"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -1154,6 +1188,117 @@ export function BookingEditModal({
           }
         />
       </form>
+
+      {/* Delete Member Confirmation Prompt */}
+      {memberToDelete !== null && (() => {
+        const targetMember = members[memberToDelete];
+        const memberDisplayName = targetMember?.memberName?.trim() || `Member #${memberToDelete + 1}`;
+        const memberHissa = Number(targetMember?.hissaCount) || 1;
+        const willSwitchToSingle = members.length === 2;
+        const memberCost = memberHissa * (Number(form.cost) || 0);
+
+        return (
+          <div
+            className="modal-backdrop fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
+            onClick={() => setMemberToDelete(null)}
+          >
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              className="card-surface relative w-full max-w-md rounded-2xl bg-[#fffdf8] p-5 shadow-2xl sm:p-6 dark:bg-[#0f2820] border border-[#ded8ca] dark:border-[#1e493b] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close Button */}
+              <button
+                type="button"
+                aria-label="Close dialog"
+                onClick={() => setMemberToDelete(null)}
+                className="absolute right-4 top-4 rounded-lg p-1.5 text-[#78847c] hover:bg-[#f1ece1] dark:text-[#8ba79b] dark:hover:bg-[#18362b] transition"
+              >
+                <X size={17} />
+              </button>
+
+              <div className="flex items-start gap-3.5">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#fff0ed] text-[#dc2626] border border-[#fbd3cb] dark:bg-[#331614] dark:text-[#fca5a5] dark:border-[#5c2420]">
+                  <Trash2 size={20} />
+                </div>
+                <div className="min-w-0 flex-1 pr-6">
+                  <h3 className="font-display text-lg font-bold text-[#183f35] dark:text-[#edf6f2] leading-tight">
+                    Remove Family Member
+                  </h3>
+                  <p className="mt-1 text-xs text-[#7b867e] dark:text-[#8ba79b] leading-relaxed">
+                    Are you sure you want to remove this member from the booking?
+                  </p>
+                </div>
+              </div>
+
+              {/* Member Details Summary Box */}
+              <div className="mt-4 rounded-xl border border-[#ded8ca] bg-[#fbf9f4] p-3.5 dark:border-[#1e493b] dark:bg-[#132c22]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex items-center gap-2">
+                    <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#246b59]/10 text-[#246b59] dark:bg-[#52c99a]/10 dark:text-[#52c99a]">
+                      <User size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm text-[#183f35] dark:text-[#edf6f2] truncate">
+                        {memberDisplayName}
+                      </p>
+                      <p className="text-[11px] text-[#7b867e] dark:text-[#92b1a3]">
+                        Family Member #{memberToDelete + 1}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="inline-flex items-center rounded-md bg-[#e4efe7] px-2 py-0.5 text-xs font-bold text-[#246b59] dark:bg-[#193a2f] dark:text-[#4ade80]">
+                      {memberHissa} {memberHissa === 1 ? 'Hissa' : 'Hissas'}
+                    </span>
+                    {memberCost > 0 && (
+                      <p className="mt-0.5 text-[11px] font-mono text-[#7b867e] dark:text-[#92b1a3]">
+                        ₹{formatNumber(memberCost)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Informational Callout: Single Mode Auto Shift or Hissa Deduction */}
+              {willSwitchToSingle ? (
+                <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-[#246b59]/25 bg-[#edf8ef] p-3 text-xs dark:border-[#52c99a]/25 dark:bg-[#122c22]">
+                  <Info size={16} className="mt-0.5 shrink-0 text-[#246b59] dark:text-[#52c99a]" />
+                  <div className="text-[11px] leading-relaxed text-[#246b59] dark:text-[#9fe2c0]">
+                    <span className="font-bold">Auto-converting to Single Person Booking:</span> Only 1 member will remain, so this booking will automatically switch to a single person booking.
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 text-[11px] text-[#7b867e] dark:text-[#8ba79b]">
+                  This member's hissa will be deducted from the total booking count. This action can be reviewed before saving changes.
+                </p>
+              )}
+
+              {/* Actions Footer */}
+              <div className="mt-6 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  data-testid="button-cancel-remove-member"
+                  onClick={() => setMemberToDelete(null)}
+                  className="btn-secondary justify-center text-xs px-4 py-2"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  data-testid="button-confirm-remove-member"
+                  onClick={confirmRemoveMember}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-transparent bg-[#dc2626] px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#b91c1c] dark:bg-[#ef4444] dark:hover:bg-[#dc2626]"
+                >
+                  <Trash2 size={13} />
+                  <span>Remove Member</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </Modal>
   );
 }
